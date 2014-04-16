@@ -27,30 +27,32 @@ Set-ExecutionPolicy unrestricted -force # not needed if already done once on the
 [string]$ConnectionString = "WinNT://$computerName"
 
 function getContext($file) {
-	$context = @{}
-	switch -regex -file $file {
-		'(.+)="(.+)"' {
-			$name,$value = $matches[1..2]
-			$context[$name] = $value
-		}
-	}
-	return $context
+    $context = @{}
+    switch -regex -file $file {
+        "^([^=]+)='(.+?)'$" {
+            $name, $value = $matches[1..2]
+            $context[$name] = $value
+        }
+    }
+    return $context
 }
 
 function addLocalUser($context) {
     # Create new user
-        $username =  $context["username"]
+        $username =  $context["USERNAME"]
+        $password =  $context["PASSWORD"]
+
         $ADSI = [adsi]$ConnectionString
 
         if(!([ADSI]::Exists("WinNT://$computerName/$username"))) {
            $user = $ADSI.Create("user",$username)
-           $user.setPassword($context["password"])
+           $user.setPassword($password)
            $user.SetInfo()
         }
         # Already exists, change password
         else{
            $admin = [ADSI]"WinNT://$env:computername/$username"
-           $admin.psbase.invoke("SetPassword", $context["PASSWORD"])
+           $admin.psbase.invoke("SetPassword", $password)
         }
 
     # Set Password to Never Expires
@@ -59,7 +61,7 @@ function addLocalUser($context) {
     $admin.CommitChanges()
 
     # Add user to local Administrators
-    $groups = "Administrators", "Administradores"
+    $groups = "Administrators"
 
     foreach ($grp in $groups) {
     if([ADSI]::Exists("WinNT://$computerName/$grp,group")) {
@@ -71,46 +73,66 @@ function addLocalUser($context) {
         }
 }
 
-function getIp($mac) {
-    $mac = $mac.Replace("-",":")
-    $octet = $mac.Split(":")
-    [String] $ip = ""
-    $ip += [convert]::toint32($octet[2],16)
-    $ip += "."+[convert]::toint32($octet[3],16)
-    $ip += "."+[convert]::toint32($octet[4],16)
-    $ip += "."+[convert]::toint32($octet[5],16)
-    return $ip
-}
-
-function getGateway($mac) {
-    $octet = $mac.Split(":")
-    [String] $ip = ""
-    $ip += [convert]::toint32($octet[2],16)
-    $ip += "."+[convert]::toint32($octet[3],16)
-    $ip += "."+[convert]::toint32($octet[4],16)
-    $ip += ".254"
-    return $ip
-}
-
 function configureNetwork($context) {
-    $Nics = Get-WMIObject Win32_NetworkAdapterConfiguration | where {$_.IPEnabled -eq "TRUE" -and ($_.MACAddress)}
-    foreach ($nic in $Nics) {
-        [String]$mac = $nic.MACAddress
-        [String]$ip = getIp($mac)
-        [String]$gw = getGateway($mac)
+    $nicId = 0;
+    $nicIpKey = "ETH" + $nicId + "_IP"
+    while ($context[$nicIpKey]) {
+        # Retrieve the data
+        $nicPrefix = "ETH" + $nicId + "_"
+
+        $ipKey      = $nicPrefix + "IP"
+        $netmaskKey = $nicPrefix + "MASK"
+        $macKey     = $nicPrefix + "MAC"
+        $dnsKey     = $nicPrefix + "DNS"
+        $gatewayKey = $nicPrefix + "GATEWAY"
+        $networkKey = $nicPrefix + "NETWORK"
+
+        $ip      = $context[$ipKey]
+        $netmask = $context[$netmaskKey]
+        $mac     = $context[$macKey]
+        $dns     = $context[$dnsKey]
+        $gateway = $context[$gatewayKey]
+        $network = $context[$networkKey]
+
+        $mac = $mac.ToUpper()
+        if (!$netmask) {
+            $netmask = "255.255.255.0"
+        }
+        if (!$network) {
+            $network = $ip -replace "\.[^.]+$", ".0"
+        }
+        if ($nicId -eq 0 -and !$gateway) {
+            $gateway = $ip -replace "\.[^.]+$", ".1"
+        }
+
+        # Run the configuration
+        $nic = Get-WMIObject Win32_NetworkAdapterConfiguration | `
+                where {$_.IPEnabled -eq "TRUE" -and $_.MACAddress -eq $mac}
+
         $nic.ReleaseDHCPLease()
-        $nic.EnableStatic($ip , "255.255.255.0")
-        $nic.SetGateways($gw)
-        $DNSServers = "193.136.172.20", "193.136.171.21"
-        $nic.SetDNSServerSearchOrder($DNSServers)
-        $nic.SetDynamicDNSRegistration("TRUE")
-        $nic.SetWINSServer($DNSServers[0], $DNSServers[1])
+        $nic.EnableStatic($ip , $netmask)
+        if ($gateway) {
+            $nic.SetGateways($gateway)
+            if ($dns) {
+                $dnsServers = $dns -split " "
+                $nic.SetDNSServerSearchOrder($dnsServers)
+                $nic.SetDynamicDNSRegistration("TRUE")
+                # $nic.SetWINSServer($DNSServers[0], $DNSServers[1])
+            }
+        }
+
+        # Next NIC
+        $nicId++;
+        $nicIpKey = "ETH" + $nicId + "_IP"
     }
 }
 
 function renameComputer($context) {
-    $ComputerInfo = Get-WmiObject -Class Win32_ComputerSystem
-    $ComputerInfo.rename($context["HOSTNAME"])
+    $hostname = $context["SET_HOSTNAME"]
+    if ($hostname) {
+        $ComputerInfo = Get-WmiObject -Class Win32_ComputerSystem
+        $ComputerInfo.rename($hostname)
+    }
 }
 
 function enableRemoteDesktop()
@@ -133,37 +155,59 @@ function enablePing()
     $pro.IcmpSettings.AllowInboundEchoRequest=$true
 }
 
-function addReadme($context) {
- 	$username =  $context["USERNAME"]
-        Copy-Item D:\README.txt C:\Users\$username\Desktop\README.txt"
+function runScripts($context, $contextLetter)
+{
+    # Execute
+    $initscripts = $context["INIT_SCRIPTS"]
+
+    if ($initscripts) {
+        foreach ($script in $initscripts.split(" ")) {
+            $script = $contextLetter + $script
+            if (Test-Path $script) {
+                & $script
+            }
+        }
+    }
 }
 
-# If folder context doesn't exist create it
-if (-not (Test-Path "c:\context\")) {
-    New-Item "C:\context\" -type directory
-    }
+function isContextualized()
+{
+    Test-Path "c:\.opennebula-context"
+}
+
+function setContextualized()
+{
+    echo "contextualized" | Out-File "c:\.opennebula-context"
+}
+
+# Return if VM has already been contextualized
+if (isContextualized) {
+    Write-Host "VM already contextualized."
+    exit 0
+}
+
+# Get all drives and select only the one that has "CONTEXT" as a label
+$contextDrive = Get-WMIObject Win32_Volume | ? { $_.Label -eq "CONTEXT" }
+
+# Return if no CONTEXT drive found
+if ($contextDrive -eq $null) {
+    Write-Host "No Context CDROM found."
+    exit 1
+}
+
+# At this point we can obtain the letter of the contextDrive
+$contextLetter     = $contextDrive.Name
+$contextScriptPath = $contextLetter + "context.sh"
 
 # Execute script
-if( -not(Test-Path "c:\context\contextualized") -and (Test-Path "D:\context.sh")) {
-    $context = @{}
-    $context = getContext('D:\context.sh')
-    addLocalUser($context)
-    renameComputer($context)
+if(Test-Path $contextScriptPath) {
+    $context = getContext $contextScriptPath
+
+    addLocalUser $context
+    renameComputer $context
     enableRemoteDesktop
     enablePing
-    addReadme($context)
-    Start-Sleep -s 30
-    configureNetwork($context)
-    echo "contextualized" |Out-File ("c:\context\contextualized")
-    restart-computer -force
-}
- ## Restart a second time to ensure network connection
-else if( -not(Test-Path "c:\context\contextualizedNetwork") -and (Test-Path "D:\context.sh"))
-{
-    $context = @{}
-    $context = getContext('D:\context.sh')
-    configureNetwork($context)
-
-    addReadme($context)
-    echo "contextualizedNetwork" |Out-File ("c:\context\contextualizedNetwork")
+    configureNetwork $context
+    runScripts $context $contextLetter
+    setContextualized
 }
