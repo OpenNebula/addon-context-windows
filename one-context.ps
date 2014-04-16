@@ -1,3 +1,20 @@
+# -------------------------------------------------------------------------- #
+# Copyright 2002-2014, OpenNebula Project (OpenNebula.org), C12G Labs        #
+#                                                                            #
+# Licensed under the Apache License, Version 2.0 (the "License"); you may    #
+# not use this file except in compliance with the License. You may obtain    #
+# a copy of the License at                                                   #
+#                                                                            #
+# http://www.apache.org/licenses/LICENSE-2.0                                 #
+#                                                                            #
+# Unless required by applicable law or agreed to in writing, software        #
+# distributed under the License is distributed on an "AS IS" BASIS,          #
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.   #
+# See the License for the specific language governing permissions and        #
+# limitations under the License.                                             #
+#--------------------------------------------------------------------------- #
+
+# Original work by:
 
 #################################################################
 ##### Windows Powershell Script to configure OpenNebula VMs #####
@@ -76,7 +93,7 @@ function getGateway($mac) {
 }
 
 function configureNetwork($context) {
-    $Nics = Get-WMIObject Win32_NetworkAdapterConfiguration | where {$_.IPEnabled -eq "TRUE" -and ($_.MACAddress)} 
+    $Nics = Get-WMIObject Win32_NetworkAdapterConfiguration | where {$_.IPEnabled -eq "TRUE" -and ($_.MACAddress)}
     foreach ($nic in $Nics) {
         [String]$mac = $nic.MACAddress
         [String]$ip = getIp($mac)
@@ -92,7 +109,7 @@ function configureNetwork($context) {
 }
 
 function renameComputer($context) {
-    $ComputerInfo = Get-WmiObject -Class Win32_ComputerSystem  
+    $ComputerInfo = Get-WmiObject -Class Win32_ComputerSystem
     $ComputerInfo.rename($context["HOSTNAME"])
 }
 
@@ -100,7 +117,7 @@ function enableRemoteDesktop()
 {
     # Windows 7 only - add firewall exception for RDP
     netsh advfirewall Firewall set rule group="Remote Desktop" new enable=yes
-    
+
     # Enable RDP
     $Terminal = (Get-WmiObject -Class "Win32_TerminalServiceSetting" -Namespace root\cimv2\terminalservices).SetAllowTsConnections(1)
     return $Terminal
@@ -125,10 +142,10 @@ function addReadme($context) {
 if (-not (Test-Path "c:\context\")) {
     New-Item "C:\context\" -type directory
     }
-    
-# Execute script    
+
+# Execute script
 if( -not(Test-Path "c:\context\contextualized") -and (Test-Path "D:\context.sh")) {
-    $context = @{} 
+    $context = @{}
     $context = getContext('D:\context.sh')
     addLocalUser($context)
     renameComputer($context)
@@ -136,7 +153,7 @@ if( -not(Test-Path "c:\context\contextualized") -and (Test-Path "D:\context.sh")
     enablePing
     addReadme($context)
     Start-Sleep -s 30
-    configureNetwork($context) 
+    configureNetwork($context)
     echo "contextualized" |Out-File ("c:\context\contextualized")
     restart-computer -force
 }
