@@ -8,7 +8,6 @@ This addon produces a Windows Contextualization script to use in Windows Guest V
 
 * Leader: Jaime Melis jmelis@opennebula.org
 * André Monteiro (Universidade de Aveiro)
-* Tiago Batista (Universidade de Aveiro)
 
 ## Acknowledgements
 
