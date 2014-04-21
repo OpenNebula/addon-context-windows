@@ -61,6 +61,7 @@ function addLocalUser($context) {
     $admin.CommitChanges()
 
     # Add user to local Administrators
+    # ATTENTION - language/regional settings have influence on this group, "Administrators" fits for English
     $groups = "Administrators"
 
     foreach ($grp in $groups) {
