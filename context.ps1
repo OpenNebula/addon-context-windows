@@ -62,6 +62,7 @@ function addLocalUser($context) {
 
     # Add user to local Administrators
     $groups = "Administrators"
+    $groups = (Get-WmiObject -Class "Win32_Group" | where { $_.SID -like "S-1-5-32-544" } | select -ExpandProperty Name)
 
     foreach ($grp in $groups) {
     if([ADSI]::Exists("WinNT://$computerName/$grp,group")) {
