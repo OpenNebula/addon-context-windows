@@ -193,8 +193,15 @@ $contextDrive = Get-WMIObject Win32_Volume | ? { $_.Label -eq "CONTEXT" }
 
 # Return if no CONTEXT drive found
 if ($contextDrive -eq $null) {
-    Write-Host "No Context CDROM found."
-    exit 1
+    $vmwareContext = & "c:\Program Files\VMware\VMware Tools\vmtoolsd.exe" --cmd "info-get guestinfo.opennebula.context" | Out-String
+
+    if ($vmwareContext -eq "") {
+        Write-Host "No Context CDROM found."
+        exit 1
+    }
+
+    [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($vmwareContext)) | Out-File "C:\context.sh" "UTF8"
+    $contextDrive = "C:"
 }
 
 # At this point we can obtain the letter of the contextDrive
