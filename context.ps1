@@ -201,17 +201,16 @@ if ($contextDrive -eq $null) {
     }
 
     [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($vmwareContext)) | Out-File "C:\context.sh" "UTF8"
-    $contextDrive = "C:"
+    $contextScriptPath = "C:\context.sh"
+} else {
+    # At this point we can obtain the letter of the contextDrive
+    $contextLetter     = $contextDrive.Name
+    $contextScriptPath = $contextLetter + "context.sh"
 }
-
-# At this point we can obtain the letter of the contextDrive
-$contextLetter     = $contextDrive.Name
-$contextScriptPath = $contextLetter + "context.sh"
 
 # Execute script
 if(Test-Path $contextScriptPath) {
     $context = getContext $contextScriptPath
-
     addLocalUser $context
     renameComputer $context
     enableRemoteDesktop
