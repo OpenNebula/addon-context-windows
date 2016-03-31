@@ -170,17 +170,35 @@ function runScripts($context, $contextLetter)
             }
         }
     }
+
+    # Execute START_SCRIPT and START_SCRIPT_64
+    $startScript   = $context["START_SCRIPT"]
+    $startScript64 = $context["START_SCRIPT_BASE64"]
+
+    if ($startScript64) {
+        $startScript = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($startScript64))
+    }
+
+    if ($startScript) {
+        $startScriptPS = "$env:SystemDrive\.opennebula-startscript.ps1"
+        $startScript | Out-File $startScriptPS "UTF8"
+        & $startScriptPS
+    }
 }
 
 function isContextualized()
 {
-    Test-Path "c:\.opennebula-context"
+    Test-Path "$env:SystemDrive\.opennebula-context"
 }
 
 function setContextualized()
 {
-    echo "contextualized" | Out-File "c:\.opennebula-context"
+    echo "contextualized" | Out-File "$env:SystemDrive\.opennebula-context"
 }
+
+################################################################################
+# Main
+################################################################################
 
 # Return if VM has already been contextualized
 if (isContextualized) {
@@ -191,21 +209,22 @@ if (isContextualized) {
 # Get all drives and select only the one that has "CONTEXT" as a label
 $contextDrive = Get-WMIObject Win32_Volume | ? { $_.Label -eq "CONTEXT" }
 
-# Return if no CONTEXT drive found
-if ($contextDrive -eq $null) {
-    $vmwareContext = & "c:\Program Files\VMware\VMware Tools\vmtoolsd.exe" --cmd "info-get guestinfo.opennebula.context" | Out-String
+if ($contextDrive) {
+    # At this point we can obtain the letter of the contextDrive
+    $contextLetter     = $contextDrive.Name
+    $contextScriptPath = $contextLetter + "context.sh"
+} else {
+
+    # Try the VMware API
+    $vmwareContext = & "$env:ProgramFiles\VMware\VMware Tools\vmtoolsd.exe" --cmd "info-get guestinfo.opennebula.context" | Out-String
 
     if ($vmwareContext -eq "") {
         Write-Host "No Context CDROM found."
         exit 1
     }
 
-    [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($vmwareContext)) | Out-File "C:\context.sh" "UTF8"
-    $contextScriptPath = "C:\context.sh"
-} else {
-    # At this point we can obtain the letter of the contextDrive
-    $contextLetter     = $contextDrive.Name
-    $contextScriptPath = $contextLetter + "context.sh"
+    [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($vmwareContext)) | Out-File "$env:SystemDrive\context.sh" "UTF8"
+    $contextScriptPath = "$env:SystemDrive\context.sh"
 }
 
 # Execute script
