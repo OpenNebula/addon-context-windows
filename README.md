@@ -4,6 +4,9 @@
 
 This addon produces a Windows Contextualization script to use in Windows Guest VMs running in an OpenNebula Cloud.
 
+The documentation on Windows Contextualization can be found in
+the [OpenNebula User's Guide](http://docs.opennebula.org/4.14/user/virtual_machine_setup/windows_context.html).
+
 ## Authors
 
 * Leader: Jaime Melis jmelis@opennebula.org
