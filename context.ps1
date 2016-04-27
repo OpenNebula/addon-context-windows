@@ -89,12 +89,18 @@ function configureNetwork($context) {
         $gatewayKey = $nicPrefix + "GATEWAY"
         $networkKey = $nicPrefix + "NETWORK"
 
+        $ip6Key      = $nicPrefix + "IP6"
+        $gw6Key      = $nicPrefix + "GATEWAY6"
+
         $ip      = $context[$ipKey]
         $netmask = $context[$netmaskKey]
         $mac     = $context[$macKey]
         $dns     = $context[$dnsKey]
         $gateway = $context[$gatewayKey]
         $network = $context[$networkKey]
+
+	$ip6     = $context[$ip6Key]
+	$gw6     = $context[$gw6Key]
 
         $mac = $mac.ToUpper()
         if (!$netmask) {
@@ -121,6 +127,20 @@ function configureNetwork($context) {
                 $nic.SetDynamicDNSRegistration("TRUE")
                 # $nic.SetWINSServer($DNSServers[0], $DNSServers[1])
             }
+        }
+
+        if ($ip6) {
+	    # We need the connection ID (i.e. "Local Area Connection",
+	    # which can be discovered from the NetworkAdapter object
+	    $na = Get-WMIObject Win32_NetworkAdapter | `
+		where {$_.deviceId -eq $nic.index}
+
+            netsh interface ipv6 add address $na.NetConnectionId $ip6
+
+            if ($gw6) {
+		netsh interface ipv6 add route ::/0 $na.NetConnectionId $gw6
+            }
+            # TODO: maybe IPv6-based DNS servers should be added here?
         }
 
         # Next NIC
