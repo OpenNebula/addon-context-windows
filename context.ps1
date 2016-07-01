@@ -188,7 +188,7 @@ function runScripts($context, $contextLetter)
 
 function isContextualized()
 {
-    Test-Path "$env:SystemDrive\.opennebula-context"
+    return $FALSE
 }
 
 function setContextualized()
