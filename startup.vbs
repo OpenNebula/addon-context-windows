@@ -8,7 +8,11 @@ For Each objDisk in colDisks
     driveLetter = objDisk.Name
     Exit For
 Next
-
+ 
+If IsEmpty(driveLetter) Then
+    driveLetter = "C:"
+End If
+ 
 contextPath = driveLetter & "\context.ps1"
 
 If fso.FileExists(contextPath) Then
