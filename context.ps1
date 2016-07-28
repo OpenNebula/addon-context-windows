@@ -107,6 +107,7 @@ function configureNetwork($context) {
         }
 
         # Run the configuration
+        $nic = $false
         while(!$nic) {
             $nic = Get-WMIObject Win32_NetworkAdapterConfiguration | `
                     where {$_.IPEnabled -eq "TRUE" -and $_.MACAddress -eq $mac}
