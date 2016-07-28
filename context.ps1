@@ -107,8 +107,11 @@ function configureNetwork($context) {
         }
 
         # Run the configuration
-        $nic = Get-WMIObject Win32_NetworkAdapterConfiguration | `
-                where {$_.IPEnabled -eq "TRUE" -and $_.MACAddress -eq $mac}
+        while(!$nic) {
+            $nic = Get-WMIObject Win32_NetworkAdapterConfiguration | `
+                    where {$_.IPEnabled -eq "TRUE" -and $_.MACAddress -eq $mac}
+            Start-Sleep -s 1
+        }
 
         $nic.ReleaseDHCPLease()
         $nic.EnableStatic($ip , $netmask)
