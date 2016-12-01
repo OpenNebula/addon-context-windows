@@ -73,7 +73,7 @@ function addLocalUser($context) {
         foreach ($grp in $groups) {
         if([ADSI]::Exists("WinNT://$computerName/$grp,group")) {
             $group = [ADSI] "WinNT://$computerName/$grp,group"
-                if(!([ADSI]::Exists("WinNT://$computerName/$username"))) {
+                if(([ADSI]::Exists("WinNT://$computerName/$username"))) {
                     Write-Host "Adding $username to $group"
                     $group.Add("WinNT://$computerName/$username")
                 }
