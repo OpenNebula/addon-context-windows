@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?>
+<?define UpgradeCode = "2056bd8a-bf03-11e6-a625-f0def1753696" ?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product Name="OpenNebula Contextualization"
+    Manufacturer="OpenNebula Systems"
+    Id="*"
+    UpgradeCode="$(var.UpgradeCode)"
+    Language="1033" Codepage="1252"
+    Version="$(var.Version)">
+
+    <Package Id="*" Keywords="Installer"
+      Description="OpenNebula Windows Contextualization package"
+      Comments="OpenNebula is a registered trademark of the OpenNebula Systems"
+      Manufacturer="OpenNebula Systems"
+      InstallerVersion="100" Languages="1033" Compressed="yes" SummaryCodepage="1252" />
+
+    <Media Id="1" Cabinet="cabinet.cab" EmbedCab="yes" />
+
+    <Property Id="ARPHELPLINK" Value="https://forum.opennebula.org/" />
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/OpenNebula/addon-context-windows" />
+    <Property Id="ARPNOMODIFY" Value="1"/>
+    <Property Id="ARPNOREPAIR" Value="1"/>
+
+    <!-- Allow package upgrades only -->
+    <Upgrade Id="$(var.UpgradeCode)">
+      <UpgradeVersion Minimum="$(var.Version)" OnlyDetect="yes" Property="NEWERVERSIONDETECTED"/>
+      <UpgradeVersion Minimum="0.0.0" Maximum="$(var.Version)" IncludeMinimum="yes" IncludeMaximum="no" Property="OLDERVERSIONBEINGUPGRADED"/>
+    </Upgrade>
+    <Condition Message="Contextualization package is already installed.">INSTALLED OR NOT NEWERVERSIONDETECTED</Condition>
+
+    <!-- Check if we have PowerShell installed -->
+    <Property Id="PSEXE">
+      <RegistrySearch Id="PSEXE"
+        Type="raw"
+        Root="HKLM"
+        Key="SOFTWARE\Microsoft\PowerShell\1\ShellIds\Microsoft.PowerShell"
+        Name="Path" />
+    </Property>
+    <Condition Message="Windows PowerShell not found.">INSTALLED OR PSEXE</Condition>
+
+    <!-- Install files -->
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFilesFolder" Name="PFiles">
+        <Directory Id="INSTALLDIR" Name="OpenNebula">
+          <Component Id="Context" Guid="f5807056-bf0c-11e6-acbe-f0def1753696">
+            <File Id="context" Name="context.ps1" DiskId="1" Source="context.ps1" KeyPath="yes" />
+          </Component>
+
+          <Component Id="Service" Guid="687050a4-c237-11e6-9fe4-54a050d65572">
+            <File Id="rhsrvany" Name="rhsrvany.exe" DiskId="1" Source="rhsrvany.exe" KeyPath="yes" />
+
+            <ServiceInstall Id="ocInstall" Name="onecontext"
+              DisplayName="OpenNebula Contextualization Service"
+              Description="Contextualizes virtual machines running in the OpenNebula cloud"
+              Type="ownProcess"
+              Start="auto"
+              Account="[SYSTEM]"
+              Arguments="-s onecontext"
+              ErrorControl="normal" />
+
+            <ServiceControl Id="ocControl" Name="onecontext"
+              Remove="both"
+              Stop="both"
+              Wait="yes" />
+
+            <RegistryKey Root="HKLM" Key="SYSTEM\CurrentControlSet\Services\onecontext\Parameters">
+              <RegistryValue Type="string" Name="CommandLine" Value="&quot;[PSEXE]&quot; -noExit -ExecutionPolicy Unrestricted -file &quot;[#context]&quot;" />
+              <RegistryValue Type="string" Name="PWD" Value="[INSTALLDIR]" />
+            </RegistryKey>
+          </Component>
+        </Directory>
+      </Directory>
+    </Directory>
+
+    <!-- Features -->
+    <Feature Id="Complete" Level="1">
+      <ComponentRef Id="Context"/>
+      <ComponentRef Id="Service"/>
+    </Feature>
+
+    <InstallExecuteSequence>
+      <RemoveExistingProducts After="InstallValidate"/>
+    </InstallExecuteSequence>
+  </Product>
+</Wix>
