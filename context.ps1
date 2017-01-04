@@ -121,8 +121,21 @@ function configureNetwork($context) {
             Start-Sleep -s 1
         }
 
-        $nic.ReleaseDHCPLease()
-        $nic.EnableStatic($ip , $netmask)
+        # release DHCP lease only if adapter is DHCP configured
+        if ($nic.DHCPEnabled) {
+            $nic.ReleaseDHCPLease() | Out-Null
+        }
+
+        # set static IP address and retry for few times if there was a problem
+        # with acquiring write lock (2147786788) for network configuration
+        # https://msdn.microsoft.com/en-us/library/aa390383(v=vs.85).aspx
+        $retry = 10
+        do {
+            $retry--
+            Start-Sleep -s 1
+            $rtn = $nic.EnableStatic($ip , $netmask)
+        } while ($rtn.ReturnValue -eq 2147786788 -and $retry);
+
         if ($gateway) {
             $nic.SetGateways($gateway)
             if ($dns) {
@@ -262,3 +275,5 @@ if(Test-Path $contextScriptPath) {
     runScripts $context $contextLetter
     setContextualized
 }
+
+# vim: ai ts=4 sts=4 et sw=4
