@@ -27,6 +27,7 @@ Set-ExecutionPolicy unrestricted -force # not needed if already done once on the
 [string]$ConnectionString = "WinNT://$computerName"
 
 function getContext($file) {
+    Write-Host "Loading Context File"
     $context = @{}
     switch -regex -file $file {
         "^([^=]+)='(.+?)'$" {
@@ -39,46 +40,55 @@ function getContext($file) {
 
 function addLocalUser($context) {
     # Create new user
-        $username =  $context["USERNAME"]
-        $password =  $context["PASSWORD"]
+    $username =  $context["USERNAME"]
+    $password =  $context["PASSWORD"]
+
+    if ($username) {
 
         $ADSI = [adsi]$ConnectionString
 
         if(!([ADSI]::Exists("WinNT://$computerName/$username"))) {
-           $user = $ADSI.Create("user",$username)
-           $user.setPassword($password)
-           $user.SetInfo()
+            Write-Host "Creating account for $username"
+            $user = $ADSI.Create("user",$username)
+            $user.setPassword($password)
+            $user.SetInfo()
         }
         # Already exists, change password
-        else{
-           $admin = [ADSI]"WinNT://$env:computername/$username"
-           $admin.psbase.invoke("SetPassword", $password)
+        else {
+            Write-Host "Setting password for $username"
+            $admin = [ADSI]"WinNT://$env:computername/$username"
+            $admin.psbase.invoke("SetPassword", $password)
         }
 
-    # Set Password to Never Expires
-    $admin = [ADSI]"WinNT://$env:computername/$username"
-    $admin.UserFlags.value = $admin.UserFlags.value -bor 0x10000
-    $admin.CommitChanges()
+        # Set Password to Never Expires
+        Write-Host "Setting password to never expire"
+        $admin = [ADSI]"WinNT://$env:computername/$username"
+        $admin.UserFlags.value = $admin.UserFlags.value -bor 0x10000
+        $admin.CommitChanges()
 
-    # Add user to local Administrators
-    # ATTENTION - language/regional settings have influence on this group, "Administrators" fits for English
-    $groups = "Administrators"
-    $groups = (Get-WmiObject -Class "Win32_Group" | where { $_.SID -like "S-1-5-32-544" } | select -ExpandProperty Name)
+        # Add user to local Administrators
+        # ATTENTION - language/regional settings have influence on this group, "Administrators" fits for English
+        $groups = (Get-WmiObject -Class "Win32_Group" | where { $_.SID -like "S-1-5-32-544" } | select -ExpandProperty Name)
 
-    foreach ($grp in $groups) {
-    if([ADSI]::Exists("WinNT://$computerName/$grp,group")) {
-                $group = [ADSI] "WinNT://$computerName/$grp,group"
-                        if([ADSI]::Exists("WinNT://$computerName/$username")) {
-                                $group.Add("WinNT://$computerName/$username")
-                        }
+        foreach ($grp in $groups) {
+        if([ADSI]::Exists("WinNT://$computerName/$grp,group")) {
+            $group = [ADSI] "WinNT://$computerName/$grp,group"
+                if([ADSI]::Exists("WinNT://$computerName/$username")) {
+                    Write-Host "Adding $username to $group"
+                    $group.Add("WinNT://$computerName/$username")
                 }
+            }
         }
+    }
 }
 
 function configureNetwork($context) {
+    Write-Host "Configuring Network Settings"
     $nicId = 0;
     $nicIpKey = "ETH" + $nicId + "_IP"
     while ($context[$nicIpKey]) {
+        Write-Host "Configuring Network Settings for $nicIPKey"
+
         # Retrieve the data
         $nicPrefix = "ETH" + $nicId + "_"
 
@@ -99,8 +109,8 @@ function configureNetwork($context) {
         $gateway = $context[$gatewayKey]
         $network = $context[$networkKey]
 
-	$ip6     = $context[$ip6Key]
-	$gw6     = $context[$gw6Key]
+        $ip6     = $context[$ip6Key]
+        $gw6     = $context[$gw6Key]
 
         $mac = $mac.ToUpper()
         if (!$netmask) {
@@ -121,6 +131,8 @@ function configureNetwork($context) {
             Start-Sleep -s 1
         }
 
+        Write-Host $nic.Description
+        
         # release DHCP lease only if adapter is DHCP configured
         if ($nic.DHCPEnabled) {
             $nic.ReleaseDHCPLease() | Out-Null
@@ -147,15 +159,15 @@ function configureNetwork($context) {
         }
 
         if ($ip6) {
-	    # We need the connection ID (i.e. "Local Area Connection",
-	    # which can be discovered from the NetworkAdapter object
-	    $na = Get-WMIObject Win32_NetworkAdapter | `
-		where {$_.deviceId -eq $nic.index}
+            # We need the connection ID (i.e. "Local Area Connection",
+            # which can be discovered from the NetworkAdapter object
+            $na = Get-WMIObject Win32_NetworkAdapter | `
+                    where {$_.deviceId -eq $nic.index}
 
             netsh interface ipv6 add address $na.NetConnectionId $ip6
 
             if ($gw6) {
-		netsh interface ipv6 add route ::/0 $na.NetConnectionId $gw6
+                netsh interface ipv6 add route ::/0 $na.NetConnectionId $gw6
             }
             # TODO: maybe IPv6-based DNS servers should be added here?
         }
@@ -168,6 +180,7 @@ function configureNetwork($context) {
 
 function renameComputer($context) {
     $hostname = $context["SET_HOSTNAME"]
+    Write-Host "Changing Hostname to $hostname"
     if ($hostname) {
         $ComputerInfo = Get-WmiObject -Class Win32_ComputerSystem
         $ComputerInfo.rename($hostname)
@@ -176,6 +189,7 @@ function renameComputer($context) {
 
 function enableRemoteDesktop()
 {
+    Write-Host "Enabling Remote Desktop"
     # Windows 7 only - add firewall exception for RDP
     netsh advfirewall Firewall set rule group="Remote Desktop" new enable=yes
 
@@ -186,6 +200,7 @@ function enableRemoteDesktop()
 
 function enablePing()
 {
+    Write-Host "Enabling Ping"
     #Create firewall manager object
     $FWM=new-object -com hnetcfg.fwmgr
 
@@ -196,6 +211,7 @@ function enablePing()
 
 function runScripts($context, $contextLetter)
 {
+    Write-Host "Running Scripts"
     # Execute
     $initscripts = $context["INIT_SCRIPTS"]
 
@@ -225,7 +241,7 @@ function runScripts($context, $contextLetter)
 
 function isContextualized()
 {
-    return $FALSE
+    return Test-Path "$env:SystemDrive\.opennebula-context"
 }
 
 function setContextualized()
