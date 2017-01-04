@@ -14,18 +14,24 @@ Requirements for building:
 * latest [msitools](https://wiki.gnome.org/msitools)
 * binary [rhsrvany.exe](https://github.com/rwmjones/rhsrvany)
 
-`package.wxs` is a package definition in the WiX-like XML format.
-Package is created by `wixl` command and package version must be specified
-on command line. Package `package.msi` is then created. E.g.:
+Script `generate.sh` builds the MSI package. It's a wrapper around
+the `wixl` command from `msitools`. It reads the `package.wxs`, a package
+definition in the WiX-like XML format. Package name or version can be
+overridden by env. variables `NAME` and `VERSION`. For example:
 
 ```bash
-$ wixl -D Version=0.0.1 package.wxs
+$ ./generate.sh
+$ NAME=one-context ./generate.sh
+$ VERSION=1.0.0 ./generate.sh
 ```
+
+New package is created as `${NAME}-${VERSION}.msi`,
+e.g. `one-context-1.0.0.msi`.
 
 Please ignore following assertion on package build, which is caused
 by skipping the attribute `Start` in tag `ServiceControl`. The parameter
 is optional in WiX specification, but the `msitools` still counts with it.
-Despite that the package is built, command exit code is correct.
+Despite that, the package is built.
 
 ```
 (wixl:22764): wixl-CRITICAL **: wixl_wix_builder_install_mode_to_event: assertion 'modeString != NULL' failed
@@ -33,7 +39,7 @@ Despite that the package is built, command exit code is correct.
 
 ### rhsrvany.exe
 
-On RHEL (CentOS) or Fedora systems the prebuilt binary
+On RHEL (CentOS) or Fedora systems the required binary
 [rhsrvany.exe](https://github.com/rwmjones/rhsrvany) is distributed as part
 of the package `virt-v2v` and placed into `/usr/share/virt-tools/rhsrvany.exe`.
 Please copy the EXE into your local repository clone before creating the MSI.
