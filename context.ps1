@@ -22,6 +22,8 @@
 #####        DETI/IEETA Universidade de Aveiro 2011         #####
 #################################################################
 
+Start-Transcript -Append -Path "$env:SystemDrive\.opennebula-context.out" | Out-Null
+
 Set-ExecutionPolicy unrestricted -force # not needed if already done once on the VM
 [string]$computerName = "$env:computername"
 [string]$ConnectionString = "WinNT://$computerName"
@@ -291,5 +293,7 @@ if(Test-Path $contextScriptPath) {
     runScripts $context $contextLetter
     setContextualized
 }
+
+Stop-Transcript | Out-Null
 
 # vim: ai ts=4 sts=4 et sw=4
