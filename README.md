@@ -7,7 +7,12 @@ This addon produces a Windows Contextualization script to use in Windows Guest V
 The documentation on Windows Contextualization can be found in
 the [OpenNebula User's Guide](http://docs.opennebula.org/5.2/operation/vm_setup/context_overview.html).
 
-## MSI package
+## Get package
+
+Latest version can be downloaded from the
+[release page](https://github.com/OpenNebula/addon-context-windows/releases).
+
+## Build own MSI package
 
 Requirements for building:
 
