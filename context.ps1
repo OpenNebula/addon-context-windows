@@ -122,25 +122,27 @@ function configureNetwork($context) {
         # Retrieve data from Context
         $nicPrefix = "ETH" + $nicId + "_"
 
-        $ipKey      = $nicPrefix + "IP"
-        $netmaskKey = $nicPrefix + "MASK"
-        $macKey     = $nicPrefix + "MAC"
-        $dnsKey     = $nicPrefix + "DNS"
-        $gatewayKey = $nicPrefix + "GATEWAY"
-        $networkKey = $nicPrefix + "NETWORK"
+        $ipKey        = $nicPrefix + "IP"
+        $netmaskKey   = $nicPrefix + "MASK"
+        $macKey       = $nicPrefix + "MAC"
+        $dnsKey       = $nicPrefix + "DNS"
+        $dnsSuffixKey = $nicPrefix + "SEARCH_DOMAIN"
+        $gatewayKey   = $nicPrefix + "GATEWAY"
+        $networkKey   = $nicPrefix + "NETWORK"
 
         $ip6Key      = $nicPrefix + "IP6"
         $gw6Key      = $nicPrefix + "GATEWAY6"
 
-        $ip      = $context[$ipKey]
-        $netmask = $context[$netmaskKey]
-        $mac     = $context[$macKey]
-        $dns     = $context[$dnsKey]
-        $gateway = $context[$gatewayKey]
-        $network = $context[$networkKey]
+        $ip        = $context[$ipKey]
+        $netmask   = $context[$netmaskKey]
+        $mac       = $context[$macKey]
+        $dns       = $context[$dnsKey]
+        $dnsSuffix = $context[$dnsSuffixKey]
+        $gateway   = $context[$gatewayKey]
+        $network   = $context[$networkKey]
 
-        $ip6     = $context[$ip6Key]
-        $gw6     = $context[$gw6Key]
+        $ip6       = $context[$ip6Key]
+        $gw6       = $context[$gw6Key]
 
         $mac = $mac.ToUpper()
         if (!$netmask) {
