@@ -310,7 +310,10 @@ function renameComputer($context) {
                 "Set computername: $hostname" | Out-File "$env:SystemDrive\.opennebula-renamed"
 
                 # Restart the Computer
+                Write-Output "... Rebooting"
                 Restart-Computer -Force
+                Exit 0
+
             }
         }
     }
