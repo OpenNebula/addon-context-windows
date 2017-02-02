@@ -279,44 +279,84 @@ function configureNetwork($context) {
 }
 
 function renameComputer($context) {
+
+    # Initialize Variables
+    $current_hostname = hostname
+    $context_hostname = $context["SET_HOSTNAME"]
+    $logged_hostname = "Unknown"
+
     # Check for the .opennebula-renamed file
-    If (-Not (Test-Path "$env:SystemDrive\.opennebula-renamed")) {
+    If (Test-Path "$env:SystemDrive\.opennebula-renamed") {
 
-        # .opennebula-renamed not found, rename the computer
-        $hostname = $context["SET_HOSTNAME"]
-        $cur_hostname = hostname
+        # Grab the JSON content
+        $json = Get-Content -Path "$env:SystemDrive\.opennebula-renamed" `
+                | Out-String
 
-        # Make sure the newname and the current name are different
-        If ($hostname -and ($hostname.ToLower() -ne $cur_hostname.ToLower())) {
+        # Convert to a Hash Table and set the Logged Hostname
+        try {
+            $status = $json | ConvertFrom-Json
+            $logged_hostname = $status.ComputerName
+        }
+        # Invalid JSON
+        catch [System.ArgumentException] {
+            $status = @{}
+            $status["ErrorMsg"] = "Invalid JSON"
+            $status["FileContents"] = $json.ToString()
+        }
+    }
 
-            Write-Output "Changing Hostname to $hostname"
-            # Load the ComputerSystem Object
-            $ComputerInfo = Get-WmiObject -Class Win32_ComputerSystem
-            $ret = $ComputerInfo.rename($hostname)
+    If ((!(Test-Path "$env:SystemDrive\.opennebula-renamed")) -or `
+        ($context_hostname.ToLower() -ne $logged_hostname.ToLower())) {
 
-            # Rename the computer
-            If ($ret.ReturnValue) {
+        # .opennebula-renamed not found or the logged_name does not match the
+        # context_name, rename the computer
 
-                # Returned Non Zero, Failed, No restart
-                Write-Output ("  ... Failed: " + $ret.ReturnValue.ToString())
-                Write-Output "      Check the computername"
-                "Failed to set computername: $hostname" | Out-File "$env:SystemDrive\.opennebula-renamed"
-                "Error Code: " + $ret.ReturnValue.ToString() | Out-File "$env:SystemDrive\.opennebula-renamed" -Append
-                $msg = 'Possible Issues: The name cannot include control characters, leading or trailing spaces, or any of the following characters: " / \\ [ ] : | < > + = ; , ?'
-                $msg | Out-File "$env:SystemDrive\.opennebula-renamed" -Append
+        Write-Output "Changing Hostname to $context_hostname"
+        # Load the ComputerSystem Object
+        $ComputerInfo = Get-WmiObject -Class Win32_ComputerSystem
 
-            } Else {
+        # Rename the computer
+        $ret = $ComputerInfo.rename($context_hostname)
 
-                # Returned Zero, Success
-                Write-Output "... Success"
-                "Set computername: $hostname" | Out-File "$env:SystemDrive\.opennebula-renamed"
+        $contents = @{}
+        $contents["ComputerName"] = $context_hostname
 
-                # Restart the Computer
-                Write-Output "... Rebooting"
-                Restart-Computer -Force
-                Exit 0
+        # Check success
+        If ($ret.ReturnValue) {
 
-            }
+            # Returned Non Zero, Failed, No restart
+            Write-Output ("  ... Failed: " + $ret.ReturnValue.ToString())
+            Write-Output "      Check the computername"
+
+            $contents["ErrorCode"] = $ret.ReturnValue.ToString()
+            $contents["ErrorMsg"] = 'Possible Issues: The name cannot include control characters, leading or trailing spaces, or any of the following characters: " / \\ [ ] : | < > + = ; , ?'
+            ConvertTo-Json $contents | Out-File "$env:SystemDrive\.opennebula-renamed"
+
+        } Else {
+
+            # Returned Zero, Success
+            Write-Output "... Success"
+
+            $contents["ErrorCode"] = $ret.ReturnValue.ToString()
+            $contents["ErrorMsg"] = "No Error"
+            ConvertTo-Json $contents | Out-File "$env:SystemDrive\.opennebula-renamed"
+
+            # Restart the Computer
+            Write-Output "... Rebooting"
+            Restart-Computer -Force
+
+            # Exit here so the script doesn't continue to run
+            Exit 0
+        }
+    } else {
+        If ($current_hostname -eq $context_hostname) {
+            Write-Output "Computer Name already set: $context_hostname"
+        }
+        ElseIf (($current_hostname -ne $context_hostname) -and `
+                ($context_hostname -eq $logged_hostname)) {
+            Write-Output "Computer Rename Attempted but failed:"
+            Write-Output "- Current: $current_hostname"
+            Write-Output "- Context: $context_hostname"
         }
     }
     Write-Output ""
@@ -440,4 +480,3 @@ if(Test-Path $contextScriptPath) {
 
 Stop-Transcript | Out-Null
 
-# vim: ai ts=4 sts=4 et sw=4
