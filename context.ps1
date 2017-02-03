@@ -24,6 +24,10 @@
 
 Start-Transcript -Append -Path "$env:SystemDrive\.opennebula-context.out" | Out-Null
 
+Write-Output "Running Script: $($MyInvocation.InvocationName)"
+Get-Date
+Write-Output ""
+
 Set-ExecutionPolicy unrestricted -force # not needed if already done once on the VM
 [string]$computerName = "$env:computername"
 [string]$ConnectionString = "WinNT://$computerName"
@@ -47,72 +51,98 @@ function addLocalUser($context) {
 
     if ($username) {
 
+        Write-Output "Creating Account for $username"
+
         $ADSI = [adsi]$ConnectionString
 
         if(!([ADSI]::Exists("WinNT://$computerName/$username"))) {
-            Write-Host "Creating account for $username"
+            # User does not exist, Create the User
+            Write-Output "- Creating account"
             $user = $ADSI.Create("user",$username)
             $user.setPassword($password)
             $user.SetInfo()
-        }
-        # Already exists, change password
-        else {
-            Write-Host "Setting password for $username"
+        } else {
+            # User exists, Set Password
+            Write-Output "- Setting Password"
             $admin = [ADSI]"WinNT://$env:computername/$username"
             $admin.psbase.invoke("SetPassword", $password)
         }
 
-        # Set Password to Never Expires
-        Write-Host "Setting password to never expire"
+        # Set Password to Never Expire
+        Write-Output "- Setting password to never expire"
         $admin = [ADSI]"WinNT://$env:computername/$username"
         $admin.UserFlags.value = $admin.UserFlags.value -bor 0x10000
         $admin.CommitChanges()
 
         # Add user to local Administrators
-        # ATTENTION - language/regional settings have influence on this group, "Administrators" fits for English
-        $groups = (Get-WmiObject -Class "Win32_Group" | where { $_.SID -like "S-1-5-32-544" } | select -ExpandProperty Name)
+        # ATTENTION - Language/Regional settings have influence on the naming
+        #             of this group. Use the Group SID instead (S-1-5-32-544)
+        $groups = (Get-WmiObject -Class "Win32_Group" |
+                   where { $_.SID -like "S-1-5-32-544" } |
+                   select -ExpandProperty Name)
 
-        foreach ($grp in $groups) {
-        if([ADSI]::Exists("WinNT://$computerName/$grp,group")) {
-            $group = [ADSI] "WinNT://$computerName/$grp,group"
-                if([ADSI]::Exists("WinNT://$computerName/$username")) {
-                    Write-Host "Adding $username to $group"
-                    $group.Add("WinNT://$computerName/$username")
+        ForEach ($grp in $groups) {
+
+            # Make sure the Group exists
+            If([ADSI]::Exists("WinNT://$computerName/$grp,group")) {
+
+                # Check if the user is a Member of the Group
+                $group = [ADSI] "WinNT://$computerName/$grp,group"
+                $members = @($group.psbase.Invoke("Members"))
+
+                $memberNames = @()
+                $members | ForEach-Object {
+                               $memberNames += $_.GetType().InvokeMember(
+                                   "Name", 'GetProperty', $null, $_, $null);
+                           }
+
+                If (-Not $memberNames.Contains($username)) {
+
+                    # Make sure the user exists, again
+                    if([ADSI]::Exists("WinNT://$computerName/$username")) {
+
+                        # Add the user
+                        Write-Output "- Adding to $grp"
+                        $group.Add("WinNT://$computerName/$username")
+                    }
                 }
             }
         }
     }
+    Write-Output ""
 }
 
 function configureNetwork($context) {
-    Write-Host "Configuring Network Settings"
+
+    # Get the NIC in the Context
     $nicId = 0;
     $nicIpKey = "ETH" + $nicId + "_IP"
     while ($context[$nicIpKey]) {
-        Write-Host "Configuring Network Settings for $nicIPKey"
 
-        # Retrieve the data
+        # Retrieve data from Context
         $nicPrefix = "ETH" + $nicId + "_"
 
-        $ipKey      = $nicPrefix + "IP"
-        $netmaskKey = $nicPrefix + "MASK"
-        $macKey     = $nicPrefix + "MAC"
-        $dnsKey     = $nicPrefix + "DNS"
-        $gatewayKey = $nicPrefix + "GATEWAY"
-        $networkKey = $nicPrefix + "NETWORK"
+        $ipKey        = $nicPrefix + "IP"
+        $netmaskKey   = $nicPrefix + "MASK"
+        $macKey       = $nicPrefix + "MAC"
+        $dnsKey       = $nicPrefix + "DNS"
+        $dnsSuffixKey = $nicPrefix + "SEARCH_DOMAIN"
+        $gatewayKey   = $nicPrefix + "GATEWAY"
+        $networkKey   = $nicPrefix + "NETWORK"
 
         $ip6Key      = $nicPrefix + "IP6"
         $gw6Key      = $nicPrefix + "GATEWAY6"
 
-        $ip      = $context[$ipKey]
-        $netmask = $context[$netmaskKey]
-        $mac     = $context[$macKey]
-        $dns     = $context[$dnsKey]
-        $gateway = $context[$gatewayKey]
-        $network = $context[$networkKey]
+        $ip        = $context[$ipKey]
+        $netmask   = $context[$netmaskKey]
+        $mac       = $context[$macKey]
+        $dns       = $context[$dnsKey]
+        $dnsSuffix = $context[$dnsSuffixKey]
+        $gateway   = $context[$gatewayKey]
+        $network   = $context[$networkKey]
 
-        $ip6     = $context[$ip6Key]
-        $gw6     = $context[$gw6Key]
+        $ip6       = $context[$ip6Key]
+        $gw6       = $context[$gw6Key]
 
         $mac = $mac.ToUpper()
         if (!$netmask) {
@@ -125,7 +155,7 @@ function configureNetwork($context) {
             $gateway = $ip -replace "\.[^.]+$", ".1"
         }
 
-        # Run the configuration
+        # Load the NIC Configuration Object
         $nic = $false
         while(!$nic) {
             $nic = Get-WMIObject Win32_NetworkAdapterConfiguration | `
@@ -133,30 +163,94 @@ function configureNetwork($context) {
             Start-Sleep -s 1
         }
 
-        Write-Host $nic.Description
-        
-        # release DHCP lease only if adapter is DHCP configured
-        if ($nic.DHCPEnabled) {
-            $nic.ReleaseDHCPLease() | Out-Null
+        Write-Output ("Configuring Network Settings: " + $nic.Description.ToString())
+
+        # Release the DHCP lease, will fail if adapter not DHCP Configured
+        Write-Output "- Release DHCP Lease"
+        $ret = $nic.ReleaseDHCPLease()
+        If ($ret.ReturnValue) {
+            Write-Output ("  ... Failed: " + $ret.ReturnValue.ToString())
+        } Else {
+            Write-Output "  ... Success"
         }
 
         # set static IP address and retry for few times if there was a problem
         # with acquiring write lock (2147786788) for network configuration
         # https://msdn.microsoft.com/en-us/library/aa390383(v=vs.85).aspx
+        Write-Output "- Enable Static IP"
         $retry = 10
         do {
             $retry--
             Start-Sleep -s 1
-            $rtn = $nic.EnableStatic($ip , $netmask)
-        } while ($rtn.ReturnValue -eq 2147786788 -and $retry);
+            $ret = $nic.EnableStatic($ip , $netmask)
+        } while ($ret.ReturnValue -eq 2147786788 -and $retry);
+        If ($ret.ReturnValue) {
+            Write-Output ("  ... Failed: " + $ret.ReturnValue.ToString())
+        } Else {
+            Write-Output "  ... Success"
+        }
+
 
         if ($gateway) {
-            $nic.SetGateways($gateway)
-            if ($dns) {
+
+            # Set the Gateway
+            Write-Output "- Set Gateway"
+            $ret = $nic.SetGateways($gateway)
+            If ($ret.ReturnValue) {
+                Write-Output ("  ... Failed: " + $ret.ReturnValue.ToString())
+            } Else {
+                Write-Output "  ... Success"
+            }
+
+            If ($dns) {
+
+                # DNS Servers
                 $dnsServers = $dns -split " "
-                $nic.SetDNSServerSearchOrder($dnsServers)
-                $nic.SetDynamicDNSRegistration("TRUE")
+
+                # DNS Server Search Order
+                Write-Output "- Set DNS Server Search Order"
+                $ret = $nic.SetDNSServerSearchOrder($dnsServers)
+                If ($ret.ReturnValue) {
+                    Write-Output ("  ... Failed: " + $ret.ReturnValue.ToString())
+                } Else {
+                    Write-Output "  ... Success"
+                }
+
+                # Set Dynamic DNS Registration
+                Write-Output "- Set Dynamic DNS Registration"
+                $ret = $nic.SetDynamicDNSRegistration("TRUE")
+                If ($ret.ReturnValue) {
+                    Write-Output ("  ... Failed: " + $ret.ReturnValue.ToString())
+                } Else {
+                    Write-Output "  ... Success"
+                }
+
+                # WINS Addresses
                 # $nic.SetWINSServer($DNSServers[0], $DNSServers[1])
+            }
+
+            if ($dnsSuffix) {
+
+                # DNS Suffixes
+                $dnsSuffixes = $dnsSuffix -split " "
+
+                # Set DNS Suffix Search Order
+                Write-Output "- Set DNS Suffix Search Order"
+                $ret = ([WMIClass]"Win32_NetworkAdapterConfiguration").SetDNSSuffixSearchOrder(($dnsSuffixes))
+                If ($ret.ReturnValue) {
+                    Write-Output ("  ... Failed: " + $ret.ReturnValue.ToString())
+                } Else {
+                    Write-Output "  ... Success"
+                }
+
+                # Set Primary DNS Domain
+                Write-Output "- Set Primary DNS Domain"
+                $ret = $nic.SetDNSDomain($dnsSuffixes[0])
+                If ($ret.ReturnValue) {
+                    Write-Output ("  ... Failed: " + $ret.ReturnValue.ToString())
+                } Else {
+                    Write-Output "  ... Success"
+                }
             }
         }
 
@@ -166,8 +260,11 @@ function configureNetwork($context) {
             $na = Get-WMIObject Win32_NetworkAdapter | `
                     where {$_.deviceId -eq $nic.index}
 
+            # Set IPv6 Address
+            Write-Output "- Set IPv6 Address"
             netsh interface ipv6 add address $na.NetConnectionId $ip6
 
+            # Set IPv6 Gateway
             if ($gw6) {
                 netsh interface ipv6 add route ::/0 $na.NetConnectionId $gw6
             }
@@ -178,67 +275,166 @@ function configureNetwork($context) {
         $nicId++;
         $nicIpKey = "ETH" + $nicId + "_IP"
     }
+    Write-Output ""
 }
 
 function renameComputer($context) {
-    $hostname = $context["SET_HOSTNAME"]
-    Write-Host "Changing Hostname to $hostname"
-    if ($hostname) {
-        $ComputerInfo = Get-WmiObject -Class Win32_ComputerSystem
-        $ComputerInfo.rename($hostname)
+
+    # Initialize Variables
+    $current_hostname = hostname
+    $context_hostname = $context["SET_HOSTNAME"]
+    $logged_hostname = "Unknown"
+
+    # Check for the .opennebula-renamed file
+    If (Test-Path "$env:SystemDrive\.opennebula-renamed") {
+
+        # Grab the JSON content
+        $json = Get-Content -Path "$env:SystemDrive\.opennebula-renamed" `
+                | Out-String
+
+        # Convert to a Hash Table and set the Logged Hostname
+        try {
+            $status = $json | ConvertFrom-Json
+            $logged_hostname = $status.ComputerName
+        }
+        # Invalid JSON
+        catch [System.ArgumentException] {
+            Write-Output "Invalid JSON:"
+            Write-Output $json.ToString()
+        }
     }
+
+    If ((!(Test-Path "$env:SystemDrive\.opennebula-renamed")) -or `
+        ($context_hostname.ToLower() -ne $logged_hostname.ToLower())) {
+
+        # .opennebula-renamed not found or the logged_name does not match the
+        # context_name, rename the computer
+
+        Write-Output "Changing Hostname to $context_hostname"
+        # Load the ComputerSystem Object
+        $ComputerInfo = Get-WmiObject -Class Win32_ComputerSystem
+
+        # Rename the computer
+        $ret = $ComputerInfo.rename($context_hostname)
+
+        $contents = @{}
+        $contents["ComputerName"] = $context_hostname
+        ConvertTo-Json $contents | Out-File "$env:SystemDrive\.opennebula-renamed"
+
+        # Check success
+        If ($ret.ReturnValue) {
+
+            # Returned Non Zero, Failed, No restart
+            Write-Output ("  ... Failed: " + $ret.ReturnValue.ToString())
+            Write-Output "      Check the computername."
+            Write-Output "Possible Issues: The name cannot include control" `
+                         "characters, leading or trailing spaces, or any of" `
+                         "the following characters: `" / \ [ ] : | < > + = ; , ?"
+
+        } Else {
+
+            # Returned Zero, Success
+            Write-Output "... Success"
+
+            # Restart the Computer
+            Write-Output "... Rebooting"
+            Restart-Computer -Force
+
+            # Exit here so the script doesn't continue to run
+            Exit 0
+        }
+    } else {
+        If ($current_hostname -eq $context_hostname) {
+            Write-Output "Computer Name already set: $context_hostname"
+        }
+        ElseIf (($current_hostname -ne $context_hostname) -and `
+                ($context_hostname -eq $logged_hostname)) {
+            Write-Output "Computer Rename Attempted but failed:"
+            Write-Output "- Current: $current_hostname"
+            Write-Output "- Context: $context_hostname"
+        }
+    }
+    Write-Output ""
 }
 
 function enableRemoteDesktop()
 {
-    Write-Host "Enabling Remote Desktop"
+    Write-Output "Enabling Remote Desktop"
     # Windows 7 only - add firewall exception for RDP
+    Write-Output "- Enable Remote Desktop Rule Group"
     netsh advfirewall Firewall set rule group="Remote Desktop" new enable=yes
 
     # Enable RDP
-    $Terminal = (Get-WmiObject -Class "Win32_TerminalServiceSetting" -Namespace root\cimv2\terminalservices).SetAllowTsConnections(1)
-    return $Terminal
+    Write-Output "- Enable Allow Terminal Services Connections"
+    $ret = (Get-WmiObject -Class "Win32_TerminalServiceSetting" -Namespace root\cimv2\terminalservices).SetAllowTsConnections(1)
+    If ($ret.ReturnValue) {
+        Write-Output ("  ... Failed: " + $ret.ReturnValue.ToString())
+    } Else {
+        Write-Output "  ... Success"
+    }
+    Write-Output ""
 }
 
 function enablePing()
 {
-    Write-Host "Enabling Ping"
+    Write-Output "Enabling Ping"
     #Create firewall manager object
-    $FWM=new-object -com hnetcfg.fwmgr
+    $fwm=new-object -com hnetcfg.fwmgr
 
     # Get current profile
     $pro=$fwm.LocalPolicy.CurrentProfile
-    $pro.IcmpSettings.AllowInboundEchoRequest=$true
+
+    Write-Output "- Enable Allow Inbound Echo Requests"
+    $ret = $pro.IcmpSettings.AllowInboundEchoRequest=$true
+    If ($ret) {
+        Write-Output "  ... Success"
+    } Else {
+        Write-Output "  ... Failed"
+    }
+
+    Write-Output ""
 }
 
 function runScripts($context, $contextLetter)
 {
-    Write-Host "Running Scripts"
-    # Execute
+    Write-Output "Running Scripts"
+    # Get list of scripts to run, " " delimited
     $initscripts = $context["INIT_SCRIPTS"]
 
     if ($initscripts) {
-        foreach ($script in $initscripts.split(" ")) {
+
+        # Parse each script and run it
+        ForEach ($script in $initscripts.split(" ")) {
+
             $script = $contextLetter + $script
-            if (Test-Path $script) {
+            If (Test-Path $script) {
+                Write-Output "- $script"
                 & $script
             }
+
         }
     }
 
-    # Execute START_SCRIPT and START_SCRIPT_64
+    # Execute START_SCRIPT or START_SCRIPT_64
     $startScript   = $context["START_SCRIPT"]
     $startScript64 = $context["START_SCRIPT_BASE64"]
 
-    if ($startScript64) {
+    If ($startScript64) {
         $startScript = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($startScript64))
     }
 
-    if ($startScript) {
+    If ($startScript) {
+
+        # Save the script as .opennebula-startscript.ps1
         $startScriptPS = "$env:SystemDrive\.opennebula-startscript.ps1"
         $startScript | Out-File $startScriptPS "UTF8"
+
+        # Launch the Script
+        Write-Output "- $startScriptPS"
         & $startScriptPS
+
     }
+    Write-Output ""
 }
 
 ################################################################################
@@ -269,8 +465,8 @@ if ($contextDrive) {
 # Execute script
 if(Test-Path $contextScriptPath) {
     $context = getContext $contextScriptPath
-    addLocalUser $context
     renameComputer $context
+    addLocalUser $context
     enableRemoteDesktop
     enablePing
     configureNetwork $context
@@ -279,4 +475,3 @@ if(Test-Path $contextScriptPath) {
 
 Stop-Transcript | Out-Null
 
-# vim: ai ts=4 sts=4 et sw=4
