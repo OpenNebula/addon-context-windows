@@ -299,9 +299,8 @@ function renameComputer($context) {
         }
         # Invalid JSON
         catch [System.ArgumentException] {
-            $status = @{}
-            $status["ErrorMsg"] = "Invalid JSON"
-            $status["FileContents"] = $json.ToString()
+            Write-Output "Invalid JSON:"
+            Write-Output $json.ToString()
         }
     }
 
@@ -320,26 +319,22 @@ function renameComputer($context) {
 
         $contents = @{}
         $contents["ComputerName"] = $context_hostname
+        ConvertTo-Json $contents | Out-File "$env:SystemDrive\.opennebula-renamed"
 
         # Check success
         If ($ret.ReturnValue) {
 
             # Returned Non Zero, Failed, No restart
             Write-Output ("  ... Failed: " + $ret.ReturnValue.ToString())
-            Write-Output "      Check the computername"
-
-            $contents["ErrorCode"] = $ret.ReturnValue.ToString()
-            $contents["ErrorMsg"] = 'Possible Issues: The name cannot include control characters, leading or trailing spaces, or any of the following characters: " / \\ [ ] : | < > + = ; , ?'
-            ConvertTo-Json $contents | Out-File "$env:SystemDrive\.opennebula-renamed"
+            Write-Output "      Check the computername."
+            Write-Output "Possible Issues: The name cannot include control" `
+                         "characters, leading or trailing spaces, or any of" `
+                         "the following characters: `" / \ [ ] : | < > + = ; , ?"
 
         } Else {
 
             # Returned Zero, Success
             Write-Output "... Success"
-
-            $contents["ErrorCode"] = $ret.ReturnValue.ToString()
-            $contents["ErrorMsg"] = "No Error"
-            ConvertTo-Json $contents | Out-File "$env:SystemDrive\.opennebula-renamed"
 
             # Restart the Computer
             Write-Output "... Rebooting"
