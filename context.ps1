@@ -492,7 +492,15 @@ if ($contextDrive) {
 } else {
 
     # Try the VMware API
-    $vmwareContext = & "$env:ProgramFiles\VMware\VMware Tools\vmtoolsd.exe" --cmd "info-get guestinfo.opennebula.context" | Out-String
+    $vmtoolsd = "${env:ProgramFiles}\VMware\VMware Tools\vmtoolsd.exe"
+    if(-Not (Test-Path $vmtoolsd)) {
+        $vmtoolsd = "${env:ProgramFiles(x86)}\VMware\VMware Tools\vmtoolsd.exe"
+    }
+
+    $vmwareContext = ""
+    if (Test-Path $vmtoolsd) {
+        $vmwareContext = & $vmtoolsd --cmd "info-get guestinfo.opennebula.context" | Out-String
+    }
 
     if ("$vmwareContext" -eq "") {
         Write-Host "No Context CDROM found."
