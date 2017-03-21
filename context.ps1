@@ -130,8 +130,10 @@ function configureNetwork($context) {
         $gatewayKey   = $nicPrefix + "GATEWAY"
         $networkKey   = $nicPrefix + "NETWORK"
 
-        $ip6Key      = $nicPrefix + "IP6"
-        $gw6Key      = $nicPrefix + "GATEWAY6"
+        $ip6Key       = $nicPrefix + "IP6"
+        $ip6ULAKey    = $nicPrefix + "IP6_ULA"
+        $ip6PrefixKey = $nicPrefix + "IP6_PREFIX_LENGTH"
+        $gw6Key       = $nicPrefix + "GATEWAY6"
 
         $ip        = $context[$ipKey]
         $netmask   = $context[$netmaskKey]
@@ -142,11 +144,16 @@ function configureNetwork($context) {
         $network   = $context[$networkKey]
 
         $ip6       = $context[$ip6Key]
+        $ip6ULA    = $context[$ip6ULAKey]
+        $ip6Prefix = $context[$ip6PrefixKey]
         $gw6       = $context[$gw6Key]
 
         $mac = $mac.ToUpper()
         if (!$netmask) {
             $netmask = "255.255.255.0"
+        }
+        if (!$ip6Prefix) {
+            $ip6Prefix = "64"
         }
         if (!$network) {
             $network = $ip -replace "\.[^.]+$", ".0"
@@ -260,9 +267,43 @@ function configureNetwork($context) {
             $na = Get-WMIObject Win32_NetworkAdapter | `
                     where {$_.deviceId -eq $nic.index}
 
+
+            # Disable router discovery
+            Write-Output "- Disable IPv6 router discovery"
+            netsh interface ipv6 set interface $na.NetConnectionId `
+                advertise=disabled routerdiscover=disabled | Out-Null
+
+            If ($?) {
+                Write-Output "  ... Success"
+            } Else {
+                Write-Output "  ... Failed"
+            }
+
+            # Remove old IPv6 addresses
+            Write-Output "- Removing old IPv6 addresses"
+            if (Get-Command Remove-NetIPAddress -errorAction SilentlyContinue) {
+                # Windows 8.1 and Server 2012 R2 and up
+                # we want to remove everything except the link-local address
+                Remove-NetIPAddress -InterfaceAlias $na.NetConnectionId `
+                    -AddressFamily IPv6 -Confirm:$false `
+                    -PrefixOrigin Other,Manual,Dhcp,RouterAdvertisement `
+                    -errorAction SilentlyContinue
+
+                If ($?) {
+                    Write-Output "  ... Success"
+                } Else {
+                    Write-Output "  ... Nothing to do"
+                }
+            } Else {
+                Write-Output "  ... Not implemented"
+            }
+
             # Set IPv6 Address
             Write-Output "- Set IPv6 Address"
-            netsh interface ipv6 add address $na.NetConnectionId $ip6
+            netsh interface ipv6 add address $na.NetConnectionId $ip6/$ip6Prefix
+            if ($ip6ULA) {
+                netsh interface ipv6 add address $na.NetConnectionId $ip6ULA/64
+            }
 
             # Set IPv6 Gateway
             if ($gw6) {
