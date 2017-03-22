@@ -117,8 +117,9 @@ function configureNetwork($context) {
     # Get the NIC in the Context
     $nicId = 0;
     $nicIpKey = "ETH" + $nicId + "_IP"
-    while ($context[$nicIpKey]) {
+    $nicIp6Key = "ETH" + $nicId + "_IP6"
 
+    while ($context[$nicIpKey] -Or $context[$nicIp6Key]) {
         # Retrieve data from Context
         $nicPrefix = "ETH" + $nicId + "_"
 
@@ -181,82 +182,84 @@ function configureNetwork($context) {
             Write-Output "  ... Success"
         }
 
-        # set static IP address and retry for few times if there was a problem
-        # with acquiring write lock (2147786788) for network configuration
-        # https://msdn.microsoft.com/en-us/library/aa390383(v=vs.85).aspx
-        Write-Output "- Enable Static IP"
-        $retry = 10
-        do {
-            $retry--
-            Start-Sleep -s 1
-            $ret = $nic.EnableStatic($ip , $netmask)
-        } while ($ret.ReturnValue -eq 2147786788 -and $retry);
-        If ($ret.ReturnValue) {
-            Write-Output ("  ... Failed: " + $ret.ReturnValue.ToString())
-        } Else {
-            Write-Output "  ... Success"
-        }
-
-
-        if ($gateway) {
-
-            # Set the Gateway
-            Write-Output "- Set Gateway"
-            $ret = $nic.SetGateways($gateway)
+        if ($ip) {
+            # set static IP address and retry for few times if there was a problem
+            # with acquiring write lock (2147786788) for network configuration
+            # https://msdn.microsoft.com/en-us/library/aa390383(v=vs.85).aspx
+            Write-Output "- Enable Static IP"
+            $retry = 10
+            do {
+                $retry--
+                Start-Sleep -s 1
+                $ret = $nic.EnableStatic($ip , $netmask)
+            } while ($ret.ReturnValue -eq 2147786788 -and $retry);
             If ($ret.ReturnValue) {
                 Write-Output ("  ... Failed: " + $ret.ReturnValue.ToString())
             } Else {
                 Write-Output "  ... Success"
             }
 
-            If ($dns) {
 
-                # DNS Servers
-                $dnsServers = $dns -split " "
+            if ($gateway) {
 
-                # DNS Server Search Order
-                Write-Output "- Set DNS Server Search Order"
-                $ret = $nic.SetDNSServerSearchOrder($dnsServers)
+                # Set the Gateway
+                Write-Output "- Set Gateway"
+                $ret = $nic.SetGateways($gateway)
                 If ($ret.ReturnValue) {
                     Write-Output ("  ... Failed: " + $ret.ReturnValue.ToString())
                 } Else {
                     Write-Output "  ... Success"
                 }
 
-                # Set Dynamic DNS Registration
-                Write-Output "- Set Dynamic DNS Registration"
-                $ret = $nic.SetDynamicDNSRegistration("TRUE")
-                If ($ret.ReturnValue) {
-                    Write-Output ("  ... Failed: " + $ret.ReturnValue.ToString())
-                } Else {
-                    Write-Output "  ... Success"
+                If ($dns) {
+
+                    # DNS Servers
+                    $dnsServers = $dns -split " "
+
+                    # DNS Server Search Order
+                    Write-Output "- Set DNS Server Search Order"
+                    $ret = $nic.SetDNSServerSearchOrder($dnsServers)
+                    If ($ret.ReturnValue) {
+                        Write-Output ("  ... Failed: " + $ret.ReturnValue.ToString())
+                    } Else {
+                        Write-Output "  ... Success"
+                    }
+
+                    # Set Dynamic DNS Registration
+                    Write-Output "- Set Dynamic DNS Registration"
+                    $ret = $nic.SetDynamicDNSRegistration("TRUE")
+                    If ($ret.ReturnValue) {
+                        Write-Output ("  ... Failed: " + $ret.ReturnValue.ToString())
+                    } Else {
+                        Write-Output "  ... Success"
+                    }
+
+                    # WINS Addresses
+                    # $nic.SetWINSServer($DNSServers[0], $DNSServers[1])
                 }
 
-                # WINS Addresses
-                # $nic.SetWINSServer($DNSServers[0], $DNSServers[1])
-            }
+                if ($dnsSuffix) {
 
-            if ($dnsSuffix) {
+                    # DNS Suffixes
+                    $dnsSuffixes = $dnsSuffix -split " "
 
-                # DNS Suffixes
-                $dnsSuffixes = $dnsSuffix -split " "
+                    # Set DNS Suffix Search Order
+                    Write-Output "- Set DNS Suffix Search Order"
+                    $ret = ([WMIClass]"Win32_NetworkAdapterConfiguration").SetDNSSuffixSearchOrder(($dnsSuffixes))
+                    If ($ret.ReturnValue) {
+                        Write-Output ("  ... Failed: " + $ret.ReturnValue.ToString())
+                    } Else {
+                        Write-Output "  ... Success"
+                    }
 
-                # Set DNS Suffix Search Order
-                Write-Output "- Set DNS Suffix Search Order"
-                $ret = ([WMIClass]"Win32_NetworkAdapterConfiguration").SetDNSSuffixSearchOrder(($dnsSuffixes))
-                If ($ret.ReturnValue) {
-                    Write-Output ("  ... Failed: " + $ret.ReturnValue.ToString())
-                } Else {
-                    Write-Output "  ... Success"
-                }
-
-                # Set Primary DNS Domain
-                Write-Output "- Set Primary DNS Domain"
-                $ret = $nic.SetDNSDomain($dnsSuffixes[0])
-                If ($ret.ReturnValue) {
-                    Write-Output ("  ... Failed: " + $ret.ReturnValue.ToString())
-                } Else {
-                    Write-Output "  ... Success"
+                    # Set Primary DNS Domain
+                    Write-Output "- Set Primary DNS Domain"
+                    $ret = $nic.SetDNSDomain($dnsSuffixes[0])
+                    If ($ret.ReturnValue) {
+                        Write-Output ("  ... Failed: " + $ret.ReturnValue.ToString())
+                    } Else {
+                        Write-Output "  ... Success"
+                    }
                 }
             }
         }
@@ -315,6 +318,7 @@ function configureNetwork($context) {
         # Next NIC
         $nicId++;
         $nicIpKey = "ETH" + $nicId + "_IP"
+        $nicIp6Key = "ETH" + $nicId + "_IP6"
     }
     Write-Output ""
 }
@@ -497,7 +501,7 @@ if ($contextDrive) {
 
     # Try the VMware API
     $vmtoolsd = "${env:ProgramFiles}\VMware\VMware Tools\vmtoolsd.exe"
-    if(-Not (Test-Path $vmtoolsd)) {
+    if (-Not (Test-Path $vmtoolsd)) {
         $vmtoolsd = "${env:ProgramFiles(x86)}\VMware\VMware Tools\vmtoolsd.exe"
     }
 
