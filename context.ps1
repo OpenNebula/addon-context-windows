@@ -326,6 +326,10 @@ function renameComputer($context) {
     $context_hostname = $context["SET_HOSTNAME"]
     $logged_hostname = "Unknown"
 
+    if (! $context_hostname) {
+        return
+    }
+
     # Check for the .opennebula-renamed file
     If (Test-Path "$env:SystemDrive\.opennebula-renamed") {
 
