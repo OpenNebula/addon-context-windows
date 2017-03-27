@@ -44,6 +44,13 @@ function getContext($file) {
     return $context
 }
 
+function envContext($context) {
+    ForEach ($h in $context.GetEnumerator()) {
+        $name = "Env:"+$h.Name
+        Set-Item $name $h.Value
+    }
+}
+
 function addLocalUser($context) {
     # Create new user
     $username =  $context["USERNAME"]
@@ -447,6 +454,7 @@ function enablePing()
 function runScripts($context, $contextLetter)
 {
     Write-Output "Running Scripts"
+
     # Get list of scripts to run, " " delimited
     $initscripts = $context["INIT_SCRIPTS"]
 
@@ -458,6 +466,7 @@ function runScripts($context, $contextLetter)
             $script = $contextLetter + $script
             If (Test-Path $script) {
                 Write-Output "- $script"
+                envContext($context)
                 & $script
             }
 
@@ -480,6 +489,7 @@ function runScripts($context, $contextLetter)
 
         # Launch the Script
         Write-Output "- $startScriptPS"
+        envContext($context)
         & $startScriptPS
 
     }
