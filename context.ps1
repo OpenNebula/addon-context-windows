@@ -323,11 +323,6 @@ function configureNetwork($context) {
             }
             # TODO: maybe IPv6-based DNS servers should be added here?
         }
-
-        # Next NIC
-        $nicId++;
-        $nicIpKey = "ETH" + $nicId + "_IP"
-        $nicIp6Key = "ETH" + $nicId + "_IP6"
     }
     Write-Output ""
 }
