@@ -517,6 +517,7 @@ function extendPartition($disk, $part)
 
 function growPartitions()
 {
+    Write-Output "- Grow partitions"
     #listDisks | % {
     #  $disk = $_
       $disk = 0
