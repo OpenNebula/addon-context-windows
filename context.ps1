@@ -517,12 +517,12 @@ function extendPartition($disk, $part)
 
 function growPartitions()
 {
-    listDisks | % {
+    #listDisks | % {
       $disk = $_
       listPartitions $disk | % {
         extendPartition $disk $_
       }
-    }
+    #}
 }
 
 ################################################################################
@@ -561,7 +561,7 @@ if ($contextDrive) {
 # Execute script
 if(Test-Path $contextScriptPath) {
     $context = getContext $contextScriptPath
-    growPartitions
+    growPartitions 0
     renameComputer $context
     addLocalUser $context
     enableRemoteDesktop
