@@ -496,16 +496,6 @@ function runScripts($context, $contextLetter)
     Write-Output ""
 }
 
-function listDisks()
-{
-    (wmic diskdrive get Index | Select-String "[0-9]+") -replace '\D',''
-}
-
-function listPartitions($disk)
-{
-    (wmic partition where DiskIndex=$disk get Index | Select-String "[0-9]+") -replace '\D','' | %{[int]$_ + 1}
-}
-
 function extendPartition($disk, $part)
 {
   "select disk $disk","select partition $part","extend" | diskpart | Out-Null
@@ -514,13 +504,15 @@ function extendPartition($disk, $part)
 function growPartitions()
 {
     Write-Output "- Grow partitions"
-    #listDisks | % {
-    #  $disk = $_
-      $disk = 0
-      listPartitions $disk | % {
-        extendPartition $disk $_
-      }
-    #}
+
+    #$diskIds = ((wmic diskdrive get Index | Select-String "[0-9]+") -replace '\D','')
+    $diskId = 0
+
+    $partIds = ((wmic partition where DiskIndex=$diskId get Index | Select-String "[0-9]+") -replace '\D','' | %{[int]$_ + 1})
+
+    ForEach ($partId in $partIds) {
+        extendPartition $diskId $partIds
+    }
 }
 
 ################################################################################
