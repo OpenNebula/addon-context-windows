@@ -498,16 +498,12 @@ function runScripts($context, $contextLetter)
 
 function listDisks()
 {
-  'list disk' | diskpart |
-    ? { $_ -match 'disk (\d+)\s+online\s+\d+ .?b\s+\d+ [gm]b' } |
-    % { $matches[1] }
+    wmic diskdrive get Index | Select-String "[0-9]+"
 }
 
 function listPartitions($disk)
 {
-  "select disk $disk", "list partition" | diskpart |
-    ? { $_ -match 'partition (\d+)' } |
-    % { $matches[1] }
+    wmic partition where DiskIndex=$disk get Index
 }
 
 function extendPartition($disk, $part)
