@@ -498,12 +498,12 @@ function runScripts($context, $contextLetter)
 
 function listDisks()
 {
-    wmic diskdrive get Index | Select-String "[0-9]+"
+    (wmic diskdrive get Index | Select-String "[0-9]+") -replace '\D',''
 }
 
 function listPartitions($disk)
 {
-    wmic partition where DiskIndex=$disk get Index
+    (wmic partition where DiskIndex=$disk get Index | Select-String "[0-9]+") -replace '\D','' | %{[int]$_ + 1}
 }
 
 function extendPartition($disk, $part)
