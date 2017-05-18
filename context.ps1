@@ -511,7 +511,7 @@ function extendPartitions()
     $partIds = ((wmic partition where DiskIndex=$diskId get Index | Select-String "[0-9]+") -replace '\D','' | %{[int]$_ + 1})
 
     ForEach ($partId in $partIds) {
-        extendPartition $diskId $partIds
+        extendPartition $diskId $partId
     }
 }
 
