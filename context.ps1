@@ -501,9 +501,9 @@ function extendPartition($disk, $part)
   "select disk $disk","select partition $part","extend" | diskpart | Out-Null
 }
 
-function growPartitions()
+function extendPartitions()
 {
-    Write-Output "- Grow partitions"
+    Write-Output "- Extend partitions"
 
     #$diskIds = ((wmic diskdrive get Index | Select-String "[0-9]+") -replace '\D','')
     $diskId = 0
@@ -551,7 +551,7 @@ if ($contextDrive) {
 # Execute script
 if(Test-Path $contextScriptPath) {
     $context = getContext $contextScriptPath
-    growPartitions
+    extendPartitions
     renameComputer $context
     addLocalUser $context
     enableRemoteDesktop
