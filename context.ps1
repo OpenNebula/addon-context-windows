@@ -496,6 +496,25 @@ function runScripts($context, $contextLetter)
     Write-Output ""
 }
 
+function extendPartition($disk, $part)
+{
+  "select disk $disk","select partition $part","extend" | diskpart | Out-Null
+}
+
+function extendPartitions()
+{
+    Write-Output "- Extend partitions"
+
+    #$diskIds = ((wmic diskdrive get Index | Select-String "[0-9]+") -replace '\D','')
+    $diskId = 0
+
+    $partIds = ((wmic partition where DiskIndex=$diskId get Index | Select-String "[0-9]+") -replace '\D','' | %{[int]$_ + 1})
+
+    ForEach ($partId in $partIds) {
+        extendPartition $diskId $partId
+    }
+}
+
 ################################################################################
 # Main
 ################################################################################
@@ -532,6 +551,7 @@ if ($contextDrive) {
 # Execute script
 if(Test-Path $contextScriptPath) {
     $context = getContext $contextScriptPath
+    extendPartitions
     renameComputer $context
     addLocalUser $context
     enableRemoteDesktop
