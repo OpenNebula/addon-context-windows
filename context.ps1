@@ -130,12 +130,14 @@ function addLocalUser($context) {
 function configureNetwork($context) {
 
     # Get the NIC in the Context
-    $nicId = 0;
-    $nicIpKey = "ETH" + $nicId + "_IP"
-    $nicIp6Key = "ETH" + $nicId + "_IP6"
+    $nicIds = ($context.Keys | Where {$_ -match '^ETH\d+_IP6?$'} | ForEach-Object {$_ -replace '(^ETH|_IP$|_IP6$)',''} | Get-Unique)
 
-    while ($context[$nicIpKey] -Or $context[$nicIp6Key]) {
+    $nicId = 0;
+
+    foreach ($nicId in $nicIds) {
         # Retrieve data from Context
+        $nicIpKey = "ETH" + $nicId + "_IP"
+        $nicIp6Key = "ETH" + $nicId + "_IP6"
         $nicPrefix = "ETH" + $nicId + "_"
 
         $ipKey        = $nicPrefix + "IP"
@@ -329,11 +331,6 @@ function configureNetwork($context) {
             }
             # TODO: maybe IPv6-based DNS servers should be added here?
         }
-
-        # Next NIC
-        $nicId++;
-        $nicIpKey = "ETH" + $nicId + "_IP"
-        $nicIp6Key = "ETH" + $nicId + "_IP6"
     }
     Write-Output ""
 }
