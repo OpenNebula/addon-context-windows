@@ -331,16 +331,14 @@ function configureNetwork($context) {
                 netsh interface ipv6 add route ::/0 $na.NetConnectionId $gw6
             }
 
+            # Remove old IPv6 DNS Servers
+            Write-Output "- Removing old IPv6 DNS Servers"
+            netsh interface ipv6 set dnsservers $na.NetConnectionId source=static address=
+
             If ($dns6) {
-                # IPv6 DNS Servers
-                $dns6Servers = $dns6 -split " "
-
-                # Remove old IPv6 DNS Servers
-                Write-Output "- Removing old IPv6 DNS Servers"
-                netsh interface ipv6 set dnsservers $na.NetConnectionId source=dhcp
-
                 # Set IPv6 DNS Servers
                 Write-Output "- Set IPv6 DNS Servers"
+                $dns6Servers = $dns6 -split " "
                 foreach ($dns6Server in $dns6Servers) {
                     netsh interface ipv6 add dnsserver $na.NetConnectionId address=$dns6Server
                 }
