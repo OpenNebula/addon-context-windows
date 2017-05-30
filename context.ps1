@@ -56,7 +56,15 @@ function addLocalUser($context) {
     $username =  $context["USERNAME"]
     $password =  $context["PASSWORD"]
 
-    if ($username) {
+    if ($username -Or $password) {
+
+        if ($username -eq $null) {
+            # ATTENTION - Language/Regional settings have influence on the naming
+            #             of this user. Use the User SID instead (S-1-5-21domain-500)
+            $username = (Get-WmiObject -Class "Win32_UserAccount" |
+                         where { $_.SID -like "S-1-5-21[0-9-]*-500" } |
+                         select -ExpandProperty Name)
+        }
 
         Write-Output "Creating Account for $username"
 
