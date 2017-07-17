@@ -17,7 +17,7 @@
 #--------------------------------------------------------------------------- #
 
 NAME=${NAME:-one-context}
-VERSION=${VERSION:-5.3.80}
+VERSION=${VERSION:-5.4.0}
 FILENAME=${FILENAME:-${NAME}-${VERSION}.msi}
 
 if [ ! -f rhsrvany.exe ]; then
