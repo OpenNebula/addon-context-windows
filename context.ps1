@@ -537,19 +537,31 @@ function extendPartitions()
 # Main
 ################################################################################
 
+Write-Output "Detecting contextualization data"
+Write-Output "- Looking for CONTEXT ISO"
+
 # Get all drives and select only the one that has "CONTEXT" as a label
 $contextDrive = Get-WMIObject Win32_Volume | ? { $_.Label -eq "CONTEXT" }
 
 if ($contextDrive) {
+    Write-Output "  ... Found"
+
     # At this point we can obtain the letter of the contextDrive
     $contextLetter     = $contextDrive.Name
     $contextScriptPath = $contextLetter + "context.sh"
 } else {
+    Write-Output "  ... Not found"
+    Write-Output "- Looking for VMware tools"
 
     # Try the VMware API
-    $vmtoolsd = "${env:ProgramFiles}\VMware\VMware Tools\vmtoolsd.exe"
-    if (-Not (Test-Path $vmtoolsd)) {
-        $vmtoolsd = "${env:ProgramFiles(x86)}\VMware\VMware Tools\vmtoolsd.exe"
+    foreach ($pf in ${env:ProgramFiles}, ${env:ProgramFiles(x86)}, ${env:ProgramW6432}) {
+        $vmtoolsd = "${pf}\VMware\VMware Tools\vmtoolsd.exe"
+        if (Test-Path $vmtoolsd) {
+            Write-Output "  ... Found in ${vmtoolsd}"
+            break
+        } else {
+            Write-Output "  ... Not found in ${vmtoolsd}"
+        }
     }
 
     $vmwareContext = ""
@@ -558,7 +570,8 @@ if ($contextDrive) {
     }
 
     if ("$vmwareContext" -eq "") {
-        Write-Host "No Context CDROM found."
+        Write-Host "No contextualization data found"
+        Stop-Transcript | Out-Null
         exit 1
     }
 
