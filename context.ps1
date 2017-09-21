@@ -537,6 +537,13 @@ function extendPartitions()
 # Main
 ################################################################################
 
+# Check the working WMI
+if (-Not (Get-WMIObject -ErrorAction SilentlyContinue Win32_Volume)) {
+    Write-Output "WMI not ready, exiting"
+    Stop-Transcript | Out-Null
+    exit 1
+}
+
 Write-Output "Detecting contextualization data"
 Write-Output "- Looking for CONTEXT ISO"
 

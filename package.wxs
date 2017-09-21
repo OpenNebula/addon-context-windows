@@ -56,7 +56,14 @@
               Start="auto"
               Account="[SYSTEM]"
               Arguments="-s onecontext"
-              ErrorControl="normal" />
+              ErrorControl="normal">
+
+              <ServiceDependency Id="Winmgmt" />
+              <ServiceDependency Id="PlugPlay" />
+              <ServiceDependency Id="Tcpip" />
+              <ServiceDependency Id="Dhcp" />
+              <ServiceDependency Id="Dnscache" />
+            </ServiceInstall>
 
             <ServiceControl Id="ocControl" Name="onecontext"
               Remove="both"
