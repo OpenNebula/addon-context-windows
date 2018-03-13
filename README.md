@@ -25,13 +25,13 @@ definition in the WiX-like XML format. Package name or version can be
 overridden by env. variables `NAME` and `VERSION`. For example:
 
 ```bash
-$ ./generate.sh
-$ NAME=one-context ./generate.sh
-$ VERSION=1.0.0 ./generate.sh
+$ TARGET=msi ./generate.sh
+$ NAME=one-context TARGET=msi ./generate.sh
+$ VERSION=1.0.0 TARGET=msi ./generate.sh
 ```
 
 New package is created as `${NAME}-${VERSION}.msi`,
-e.g. `one-context-1.0.0.msi`.
+e.g. `one-context-1.0.0.msi` in the `out/` directory.
 
 Please ignore following assertion on package build, which is caused
 by skipping the attribute `Start` in tag `ServiceControl`. The parameter

@@ -16,20 +16,67 @@
 # limitations under the License.                                             #
 #--------------------------------------------------------------------------- #
 
+if [ -z "${TARGET}" ]; then
+    echo 'Error: env. variable TARGET not set' >&2
+    exit 1
+fi
+
+###
+
+if [ -z "${RELEASE}" ]; then
+    if git describe --contains $(git rev-parse HEAD) &>/dev/null; then
+        RELEASE=1
+    else
+        DATE=${DATE:-$(date +%Y%m%d)}
+        GIT=$(git rev-parse --short HEAD)
+        RELEASE="${DATE}git${GIT}"
+    fi
+fi
+
+###
+
 NAME=${NAME:-one-context}
 VERSION=${VERSION:-5.4.1}
-FILENAME=${FILENAME:-${NAME}-${VERSION}.msi}
+RELEASE=${RELEASE:-1}
+LABEL="${NAME}-${VERSION}"
 
-if [ ! -f rhsrvany.exe ]; then
-    if [ -f /usr/share/virt-tools/rhsrvany.exe ]; then
-        cp /usr/share/virt-tools/rhsrvany.exe .
-    else
-        echo 'Missing rhsrvany.exe' >&2
-        exit 1
-    fi
+if [ "${RELEASE}" = '1' ]; then
+    FILENAME=${FILENAME:-${NAME}-${VERSION}.${TARGET}}
+else
+    FILENAME=${FILENAME:-${NAME}-${VERSION}-${RELEASE}.${TARGET}}
+fi
+
+# cleanup
+if [ -z "${OUT}" ]; then
+    OUT="out/${FILENAME}"
+    mkdir -p $(dirname "${OUT}")
+    rm -rf "${OUT}"
 fi
 
 set -e
 
-wixl -D Version="${VERSION}" -o "${FILENAME}" package.wxs
-echo "${FILENAME}"
+if [ "${TARGET}" = 'msi' ]; then
+    if [ ! -f rhsrvany.exe ]; then
+        if [ -f /usr/share/virt-tools/rhsrvany.exe ]; then
+            cp /usr/share/virt-tools/rhsrvany.exe .
+        else
+            echo 'Missing rhsrvany.exe' >&2
+            exit 1
+        fi
+    fi
+
+    wixl -D Version="${VERSION}" -o "${OUT}" package.wxs
+
+elif [ "${TARGET}" = 'iso' ]; then
+    mkisofs -J -R -input-charset utf8 \
+        -m '*.iso' \
+        -V "${LABEL}" \
+        -o "${OUT}" \
+        $(dirname "${OUT}")
+
+else
+    echo "Error: Invalid target '${TARGET}'" >&2
+    exit 1
+fi
+
+echo $(basename ${OUT})
