@@ -183,10 +183,18 @@ function configureNetwork($context) {
 
         # Load the NIC Configuration Object
         $nic = $false
-        while(!$nic) {
+        $retry = 30
+        do {
+            $retry--
+            Start-Sleep -s 1
             $nic = Get-WMIObject Win32_NetworkAdapterConfiguration | `
                     where {$_.IPEnabled -eq "TRUE" -and $_.MACAddress -eq $mac}
-            Start-Sleep -s 1
+        } while (!$nic -and $retry)
+
+        If (!$nic) {
+            Write-Output ("Configuring Network Settings: " + $mac)
+            Write-Output ("  ... Failed: Interface with MAC not found")
+            Continue
         }
 
         Write-Output ("Configuring Network Settings: " + $nic.Description.ToString())
