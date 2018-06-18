@@ -111,7 +111,7 @@ function addLocalUser($context) {
                                    "Name", 'GetProperty', $null, $_, $null);
                            }
 
-                If (-Not $memberNames -Contains $username) {
+                If (-Not ($memberNames -Contains $username)) {
 
                     # Make sure the user exists, again
                     if([ADSI]::Exists("WinNT://$computerName/$username")) {
