@@ -130,7 +130,7 @@ function addLocalUser($context) {
 function configureNetwork($context) {
 
     # Get the NIC in the Context
-    $nicIds = ($context.Keys | Where {$_ -match '^ETH\d+_IP6?$'} | ForEach-Object {$_ -replace '(^ETH|_IP$|_IP6$)',''} | Get-Unique)
+    $nicIds = ($context.Keys | Where {$_ -match '^ETH\d+_IP6?$'} | ForEach-Object {$_ -replace '(^ETH|_IP$|_IP6$)',''} | Get-Unique | Sort-Object)
 
     $nicId = 0;
 
@@ -351,6 +351,12 @@ function configureNetwork($context) {
                     netsh interface ipv6 add dnsserver $na.NetConnectionId address=$dns6Server
                 }
             }
+
+            doPing($ip6)
+        }
+
+        If ($ip) {
+            doPing($ip)
         }
     }
     Write-Output ""
@@ -475,6 +481,25 @@ function enablePing()
     }
 
     Write-Output ""
+}
+
+function doPing($ip, $retries=20)
+{
+    Write-Output "- Ping Interface IP $ip"
+
+    $ping = $false
+    $retry = 0
+    do {
+        $retry++
+        Start-Sleep -s 1
+        $ping = Test-Connection -ComputerName $ip -Count 1 -Quiet -ErrorAction SilentlyContinue
+    } while (!$ping -and ($retry -lt $retries))
+
+    If ($ping) {
+        Write-Output "  ... Success ($retry tries)"
+    } Else {
+        Write-Output "  ... Failed ($retry tries)"
+    }
 }
 
 function runScripts($context, $contextLetter)
