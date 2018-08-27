@@ -107,11 +107,12 @@ function addLocalUser($context) {
 
                 $memberNames = @()
                 $members | ForEach-Object {
-                               $memberNames += $_.GetType().InvokeMember(
-                                   "Name", 'GetProperty', $null, $_, $null);
+                # suggestet workaround for GetType() see : 
+                # https://p0w3rsh3ll.wordpress.com/2016/06/14/any-documented-adsi-changes-in-powershell-5-0/
+                               $memberNames += ([ADSI]$_).InvokeGet('AdsPath')
                            }
 
-                If (-Not ($memberNames -Contains $username)) {
+                If (-Not ($memberNames -match $username)) {
 
                     # Make sure the user exists, again
                     if([ADSI]::Exists("WinNT://$computerName/$username")) {
