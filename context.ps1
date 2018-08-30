@@ -107,8 +107,8 @@ function addLocalUser($context) {
 
                 $memberNames = @()
                 $members | ForEach-Object {
-                               $memberNames += $_.GetType().InvokeMember(
-                                   "Name", 'GetProperty', $null, $_, $null);
+                               # https://p0w3rsh3ll.wordpress.com/2016/06/14/any-documented-adsi-changes-in-powershell-5-0/
+                               $memberNames += ([ADSI]$_).psbase.InvokeGet('Name')
                            }
 
                 If (-Not ($memberNames -Contains $username)) {
