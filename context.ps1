@@ -199,11 +199,6 @@ function configureNetwork($context) {
             Continue
         }
 
-        Write-Output "- Set MTU"
-        $mtu = [unit32]$mtu
-        netsh interface set subinterface $nic.InterfaceIndex mtu=$mtu
-        Write-Output " ... Success"
-
         Write-Output ("Configuring Network Settings: " + $nic.Description.ToString())
 
         # Release the DHCP lease, will fail if adapter not DHCP Configured
@@ -214,6 +209,11 @@ function configureNetwork($context) {
         } Else {
             Write-Output "  ... Success"
         }
+
+        Write-Output "- Set MTU"
+        $mtu = [unit32]$mtu
+        netsh interface set subinterface $nic.InterfaceIndex mtu=$mtu
+        Write-Output " ... Success"
 
         if ($ip) {
             # set static IP address and retry for few times if there was a problem
@@ -366,6 +366,7 @@ function configureNetwork($context) {
             doPing($ip)
         }
     }
+
     Write-Output ""
 }
 
