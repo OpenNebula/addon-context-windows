@@ -201,8 +201,7 @@ function configureNetwork($context) {
 
         Write-Output "- Set MTU"
         $mtu = [unit32]$mtu
-        $adapt = get-wmiobject win32_networkadapter -Filter 'NetEnabled=True'
-        netsh interface ipv4 set subinterface "$($adapt.netconnectionid)"  mtu=$mtu store=persistent
+        netsh interface set subinterface $nic.InterfaceIndex mtu=$mtu
         Write-Output " ... Success"
 
         Write-Output ("Configuring Network Settings: " + $nic.Description.ToString())
