@@ -152,6 +152,7 @@ function configureNetwork($context) {
         $ip6ULAKey    = $nicPrefix + "IP6_ULA"
         $ip6PrefixKey = $nicPrefix + "IP6_PREFIX_LENGTH"
         $gw6Key       = $nicPrefix + "GATEWAY6"
+        $mtuKey       = $nicPrefix + "MTU"
 
         $ip        = $context[$ipKey]
         $netmask   = $context[$netmaskKey]
@@ -161,6 +162,7 @@ function configureNetwork($context) {
         $dnsSuffix = $context[$dnsSuffixKey]
         $gateway   = $context[$gatewayKey]
         $network   = $context[$networkKey]
+        $mtu       = $context[$mtuKey]
 
         $ip6       = $context[$ip6Key]
         $ip6ULA    = $context[$ip6ULAKey]
@@ -196,6 +198,12 @@ function configureNetwork($context) {
             Write-Output ("  ... Failed: Interface with MAC not found")
             Continue
         }
+
+        Write-Output "- Set MTU"
+        $mtu = [unit32]$mtu
+        $adapt = get-wmiobject win32_networkadapter -Filter 'NetEnabled=True'
+        netsh interface ipv4 set subinterface "$($adapt.netconnectionid)"  mtu=$mtu store=persistent
+        Write-Output " ... Success"
 
         Write-Output ("Configuring Network Settings: " + $nic.Description.ToString())
 
