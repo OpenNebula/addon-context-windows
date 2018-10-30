@@ -152,6 +152,7 @@ function configureNetwork($context) {
         $ip6ULAKey    = $nicPrefix + "IP6_ULA"
         $ip6PrefixKey = $nicPrefix + "IP6_PREFIX_LENGTH"
         $gw6Key       = $nicPrefix + "GATEWAY6"
+        $mtuKey       = $nicPrefix + "MTU"
 
         $ip        = $context[$ipKey]
         $netmask   = $context[$netmaskKey]
@@ -161,6 +162,7 @@ function configureNetwork($context) {
         $dnsSuffix = $context[$dnsSuffixKey]
         $gateway   = $context[$gatewayKey]
         $network   = $context[$networkKey]
+        $mtu       = $context[$mtuKey]
 
         $ip6       = $context[$ip6Key]
         $ip6ULA    = $context[$ip6ULAKey]
@@ -225,6 +227,17 @@ function configureNetwork($context) {
                 Write-Output "  ... Success"
             }
 
+            # Set IPv4 MTU
+            if ($mtu) {
+                Write-Output "- Set MTU: ${mtu}"
+                netsh interface ipv4 set interface $nic.InterfaceIndex mtu=$mtu
+
+                If ($?) {
+                    Write-Output "  ... Success"
+                } Else {
+                    Write-Output "  ... Failed"
+                }
+            }
 
             if ($gateway) {
 
@@ -336,7 +349,26 @@ function configureNetwork($context) {
 
             # Set IPv6 Gateway
             if ($gw6) {
+                Write-Output "- Set IPv6 Gateway"
                 netsh interface ipv6 add route ::/0 $na.NetConnectionId $gw6
+
+                If ($?) {
+                    Write-Output "  ... Success"
+                } Else {
+                    Write-Output "  ... Failed"
+                }
+            }
+
+            # Set IPv4 MTU
+            if ($mtu) {
+                Write-Output "- Set IPv6 MTU: ${mtu}"
+                netsh interface ipv6 set interface $nic.InterfaceIndex mtu=$mtu
+
+                If ($?) {
+                    Write-Output "  ... Success"
+                } Else {
+                    Write-Output "  ... Failed"
+                }
             }
 
             # Remove old IPv6 DNS Servers
@@ -359,6 +391,7 @@ function configureNetwork($context) {
             doPing($ip)
         }
     }
+
     Write-Output ""
 }
 
