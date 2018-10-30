@@ -359,7 +359,7 @@ function configureNetwork($context) {
                 }
             }
 
-            # Set IPv4 MTU
+            # Set IPv6 MTU
             if ($mtu) {
                 Write-Output "- Set IPv6 MTU: ${mtu}"
                 netsh interface ipv6 set interface $nic.InterfaceIndex mtu=$mtu
