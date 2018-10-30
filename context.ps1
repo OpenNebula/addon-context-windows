@@ -210,11 +210,6 @@ function configureNetwork($context) {
             Write-Output "  ... Success"
         }
 
-        Write-Output "- Set MTU"
-        $mtu = [unit32]$mtu
-        netsh interface set subinterface $nic.InterfaceIndex mtu=$mtu
-        Write-Output " ... Success"
-
         if ($ip) {
             # set static IP address and retry for few times if there was a problem
             # with acquiring write lock (2147786788) for network configuration
@@ -232,6 +227,17 @@ function configureNetwork($context) {
                 Write-Output "  ... Success"
             }
 
+            # Set IPv4 MTU
+            if ($mtu) {
+                Write-Output "- Set MTU: ${mtu}"
+                netsh interface ipv4 set interface $nic.InterfaceIndex mtu=$mtu
+
+                If ($?) {
+                    Write-Output "  ... Success"
+                } Else {
+                    Write-Output "  ... Failed"
+                }
+            }
 
             if ($gateway) {
 
@@ -343,7 +349,26 @@ function configureNetwork($context) {
 
             # Set IPv6 Gateway
             if ($gw6) {
+                Write-Output "- Set IPv6 Gateway"
                 netsh interface ipv6 add route ::/0 $na.NetConnectionId $gw6
+
+                If ($?) {
+                    Write-Output "  ... Success"
+                } Else {
+                    Write-Output "  ... Failed"
+                }
+            }
+
+            # Set IPv4 MTU
+            if ($mtu) {
+                Write-Output "- Set IPv6 MTU: ${mtu}"
+                netsh interface ipv6 set interface $nic.InterfaceIndex mtu=$mtu
+
+                If ($?) {
+                    Write-Output "  ... Success"
+                } Else {
+                    Write-Output "  ... Failed"
+                }
             }
 
             # Remove old IPv6 DNS Servers
