@@ -599,6 +599,26 @@ function extendPartitions()
     }
 }
 
+function reportReady()
+{
+    Write-Output "Report Ready to onegate"
+    $reportReady   = $context["REPORT_READY"]
+    if($reportReady){
+        $body = "READY = YES"
+        $token= Get-Content d:\token.txt
+        $target= $context.ONEGATE_ENDPOINT+"/vm"
+        [System.Net.HttpWebRequest] $webRequest = [System.Net.WebRequest]::Create($target)
+        $webRequest.Method = "PUT"
+        $webRequest.Headers.Add("X-ONEGATE-TOKEN", $token)
+        $webRequest.Headers.Add("X-ONEGATE-VMID", $context.VMID)
+        $buffer = [System.Text.Encoding]::UTF8.GetBytes($body)
+        $webRequest.ContentLength = $buffer.Length
+        $requestStream = $webRequest.GetRequestStream()
+        $requestStream.Write($buffer, 0, $buffer.Length)
+        $requestStream.Flush()
+        $requestStream.Close()
+    }
+}
 ################################################################################
 # Main
 ################################################################################
@@ -662,6 +682,7 @@ if(Test-Path $contextScriptPath) {
     enablePing
     configureNetwork $context
     runScripts $context $contextLetter
+    reportReady
 }
 
 Stop-Transcript | Out-Null
