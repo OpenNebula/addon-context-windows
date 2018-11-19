@@ -649,6 +649,7 @@ if ($contextDrive) {
     }
 
     [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($vmwareContext)) | Out-File "$env:SystemDrive\context.sh" "UTF8"
+    $contextLetter     = $env:SystemDrive + "\";
     $contextScriptPath = "$env:SystemDrive\context.sh"
 }
 
