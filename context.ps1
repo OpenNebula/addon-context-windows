@@ -611,6 +611,7 @@ function reportReady()
             $token= Get-Content "${contextLetter}token.txt"
             $target= $context.ONEGATE_ENDPOINT+"/vm"
             [System.Net.HttpWebRequest] $webRequest = [System.Net.WebRequest]::Create($target)
+            $webRequest.Timeout = 10000
             $webRequest.Method = "PUT"
             $webRequest.Headers.Add("X-ONEGATE-TOKEN", $token)
             $webRequest.Headers.Add("X-ONEGATE-VMID", $context.VMID)
@@ -618,9 +619,9 @@ function reportReady()
             $webRequest.ContentLength = $buffer.Length
             $requestStream = $webRequest.GetRequestStream()
             $requestStream.Write($buffer, 0, $buffer.Length)
-            $response = $webRequest.getResponse()
             $requestStream.Flush()
             $requestStream.Close()
+            $response = $webRequest.getResponse()
 
             if ($response.StatusCode -eq "OK") {
                 Write-Output " ... Success"
