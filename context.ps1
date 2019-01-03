@@ -387,6 +387,36 @@ function configureNetwork($context) {
             doPing($ip6)
         }
 
+        $aliasIds = ($context.Keys | Where {$_ -match "^ETH[0-9]_ALIAS[0-9]+_IP6?$"} | Get-Unique | Sort-Object)
+
+        foreach ($aliasId in $aliasIds) {
+                    $aliasId       = $aliasId.split("_")[1]
+                    $aliasIp4Key   = "ETH" + $nicId + "_" + $aliasId + "_IP"
+                    $aliasMaskKey  = "ETH" + $nicId + "_" + $aliasId + "_MASK"
+                    $aliasIp6Key   = "ETH" + $nicId + "_" + $aliasId + "_IP6"
+                    $aliasIp4      = $context[$aliasIp4Key]
+                    $aliasMask     = $context[$aliasMaskKey]
+                    $aliasIp6      = $context[$aliasIp6Key]
+
+                    $message      = "- Configuring " + $aliasId + " for " + "ETH" + $nicId
+
+                    Write-Output $message
+
+                    If ($aliasIp4) {
+                        netsh interface ipv4 add address $nic.InterfaceIndex $aliasIp4 $aliasMask
+                    }
+
+                    If ($aliasIp6) {
+                        netsh interface ipv6 add address $nic.InterfaceIndex $aliasIp6
+                    }
+
+                    If ($?) {
+                        Write-Output " ... Success"
+                    } Else {
+                        Write-Output " ... Failed"
+                    }
+        }
+
         If ($ip) {
             doPing($ip)
         }
