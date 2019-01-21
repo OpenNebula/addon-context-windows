@@ -130,7 +130,7 @@ function addLocalUser($context) {
 function configureNetwork($context) {
 
     # Get the NIC in the Context
-    $nicIds = ($context.Keys | Where {$_ -match '^ETH\d+_IP6?$'} | ForEach-Object {$_ -replace '(^ETH|_IP$|_IP6$)',''} | Get-Unique | Sort-Object)
+    $nicIds = ($context.Keys | Where {$_ -match '^ETH\d+_IP6?$'} | ForEach-Object {$_ -replace '(^ETH|_IP$|_IP6$)',''} | Sort-Object -Unique)
 
     $nicId = 0;
 
@@ -214,7 +214,7 @@ function configureNetwork($context) {
             # set static IP address and retry for few times if there was a problem
             # with acquiring write lock (2147786788) for network configuration
             # https://msdn.microsoft.com/en-us/library/aa390383(v=vs.85).aspx
-            Write-Output "- Enable Static IP"
+            Write-Output "- Set Static IP"
             $retry = 10
             do {
                 $retry--
@@ -343,8 +343,14 @@ function configureNetwork($context) {
             # Set IPv6 Address
             Write-Output "- Set IPv6 Address"
             netsh interface ipv6 add address $na.NetConnectionId $ip6/$ip6Prefix
-            if ($ip6ULA) {
+            If ($? -And $ip6ULA) {
                 netsh interface ipv6 add address $na.NetConnectionId $ip6ULA/64
+            }
+
+            If ($?) {
+                Write-Output "  ... Success"
+            } Else {
+                Write-Output "  ... Failed"
             }
 
             # Set IPv6 Gateway
@@ -387,34 +393,49 @@ function configureNetwork($context) {
             doPing($ip6)
         }
 
-        $aliasIds = ($context.Keys | Where {$_ -match "^ETH[0-9]_ALIAS[0-9]+_IP6?$"} | Get-Unique | Sort-Object)
+        # Get the aliases for the NIC in the Context
+        $aliasIds = ($context.Keys | Where {$_ -match "^ETH${nicId}_ALIAS\d+_IP6?$"} | ForEach-Object {$_ -replace '(^ETH\d+_ALIAS|_IP$|_IP6$)',''} | Sort-Object -Unique)
 
         foreach ($aliasId in $aliasIds) {
-                    $aliasId       = $aliasId.split("_")[1]
-                    $aliasIp4Key   = "ETH" + $nicId + "_" + $aliasId + "_IP"
-                    $aliasMaskKey  = "ETH" + $nicId + "_" + $aliasId + "_MASK"
-                    $aliasIp6Key   = "ETH" + $nicId + "_" + $aliasId + "_IP6"
-                    $aliasIp4      = $context[$aliasIp4Key]
-                    $aliasMask     = $context[$aliasMaskKey]
-                    $aliasIp6      = $context[$aliasIp6Key]
+            $aliasPrefix    = "ETH${nicId}_ALIAS${aliasId}"
+            $aliasIp        = $context[$aliasPrefix + '_IP']
+            $aliasNetmask   = $context[$aliasPrefix + '_MASK']
+            $aliasIp6       = $context[$aliasPrefix + '_IP6']
+            $aliasIp6ULA    = $context[$aliasPrefix + '_IP6_ULA']
+            $aliasIp6Prefix = $context[$aliasPrefix + '_IP6_PREFIX_LENGTH']
 
-                    $message      = "- Configuring " + $aliasId + " for " + "ETH" + $nicId
+            if (!$aliasNetmask) {
+                $aliasNetmask = "255.255.255.0"
+            }
 
-                    Write-Output $message
+            if (!$aliasIp6Prefix) {
+                $aliasIp6Prefix = "64"
+            }
 
-                    If ($aliasIp4) {
-                        netsh interface ipv4 add address $nic.InterfaceIndex $aliasIp4 $aliasMask
-                    }
+            if ($aliasIp) {
+                Write-Output "- Set Additional Static IP (${aliasPrefix})"
+                netsh interface ipv4 add address $nic.InterfaceIndex $aliasIp $aliasNetmask
 
-                    If ($aliasIp6) {
-                        netsh interface ipv6 add address $nic.InterfaceIndex $aliasIp6
-                    }
+                If ($?) {
+                    Write-Output "  ... Success"
+                } Else {
+                    Write-Output "  ... Failed"
+                }
+            }
 
-                    If ($?) {
-                        Write-Output " ... Success"
-                    } Else {
-                        Write-Output " ... Failed"
-                    }
+            if ($aliasIp6) {
+                Write-Output "- Set Additional IPv6 Address (${aliasPrefix})"
+                netsh interface ipv6 add address $nic.InterfaceIndex $aliasIp6/$aliasIp6Prefix
+                If ($? -And $aliasIp6ULA) {
+                    netsh interface ipv6 add address $nic.InterfaceIndex $aliasIp6ULA/64
+                }
+
+                If ($?) {
+                    Write-Output "  ... Success"
+                } Else {
+                    Write-Output "  ... Failed"
+                }
+            }
         }
 
         If ($ip) {
