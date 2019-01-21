@@ -652,39 +652,60 @@ function extendPartitions()
 
 function reportReady()
 {
-    $reportReady   = $context["REPORT_READY"]
+    $reportReady     = $context['REPORT_READY']
+    $oneGateEndpoint = $context['ONEGATE_ENDPOINT']
+    $vmId            = $context['VMID']
 
-    if ($reportReady) {
-        Write-Output "Report Ready to onegate"
+    if ($reportReady -and $reportReady.ToUpper() -eq 'YES') {
+        Write-Output 'Report Ready to OneGate'
+
+        if (!$oneGateEndpoint) {
+            Write-Output ' ... Failed: ONEGATE_ENDPOINT not set'
+            return
+        }
+
+        if (!$vmId) {
+            Write-Output ' ... Failed: VMID not set'
+            return
+        }
 
         try {
-            $body = "READY = YES"
-            $token= Get-Content "${contextLetter}token.txt"
-            $target= $context.ONEGATE_ENDPOINT+"/vm"
+            $tokenPath = $contextLetter + 'token.txt'
+            if (Test-Path $tokenPath) {
+                $token = Get-Content $tokenPath
+            } else {
+                Write-Output " ... Failed: Token file not found"
+                return
+            }
+
+            $body = 'READY = YES'
+            $target= $oneGateEndpoint + '/vm'
+
             [System.Net.HttpWebRequest] $webRequest = [System.Net.WebRequest]::Create($target)
             $webRequest.Timeout = 10000
-            $webRequest.Method = "PUT"
-            $webRequest.Headers.Add("X-ONEGATE-TOKEN", $token)
-            $webRequest.Headers.Add("X-ONEGATE-VMID", $context.VMID)
+            $webRequest.Method = 'PUT'
+            $webRequest.Headers.Add('X-ONEGATE-TOKEN', $token)
+            $webRequest.Headers.Add('X-ONEGATE-VMID', $vmId)
             $buffer = [System.Text.Encoding]::UTF8.GetBytes($body)
             $webRequest.ContentLength = $buffer.Length
+
             $requestStream = $webRequest.GetRequestStream()
             $requestStream.Write($buffer, 0, $buffer.Length)
             $requestStream.Flush()
             $requestStream.Close()
-            $response = $webRequest.getResponse()
 
-            if ($response.StatusCode -eq "OK") {
-                Write-Output " ... Success"
+            $response = $webRequest.getResponse()
+            if ($response.StatusCode -eq 'OK') {
+                Write-Output ' ... Success'
             } else {
-                Write-Output " ... Failed"
+                Write-Output ' ... Failed'
                 Write-Output $response.StatusCode
             }
         }
         catch {
             $errorMessage = $_.Exception.Message
 
-            Write-Output " ... Failed"
+            Write-Output ' ... Failed'
             Write-Output $errorMessage
         }
     }
