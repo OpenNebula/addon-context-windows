@@ -688,6 +688,14 @@ function reportReady()
             $webRequest.Headers.Add('X-ONEGATE-VMID', $vmId)
             $buffer = [System.Text.Encoding]::UTF8.GetBytes($body)
             $webRequest.ContentLength = $buffer.Length
+            
+            if ($oneGateEndpoint -ilike "https://*")
+             {
+                #For HTTPS OneGateEndpoint
+                Write-Output "... Use HTTPS for OneGateEndpoint"
+                $AllProtocols = [System.Net.SecurityProtocolType]'Ssl3,Tls,Tls11,Tls12'
+                [System.Net.ServicePointManager]::SecurityProtocol = $AllProtocols
+              }
 
             $requestStream = $webRequest.GetRequestStream()
             $requestStream.Write($buffer, 0, $buffer.Length)
@@ -710,6 +718,7 @@ function reportReady()
         }
     }
 }
+
 ################################################################################
 # Main
 ################################################################################
