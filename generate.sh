@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # -------------------------------------------------------------------------- #
 # Copyright 2010-2017, OpenNebula Systems                                    #
@@ -36,7 +36,7 @@ fi
 ###
 
 NAME=${NAME:-one-context}
-VERSION=${VERSION:-5.7.80}
+VERSION=${VERSION:-5.7.90}
 RELEASE=${RELEASE:-1}
 LABEL="${NAME}-${VERSION}"
 
