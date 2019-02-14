@@ -695,6 +695,7 @@ function reportReady()
                 $AllProtocols = [System.Net.SecurityProtocolType]'Ssl3,Tls,Tls11,Tls12'
                 [System.Net.ServicePointManager]::SecurityProtocol = $AllProtocols
                 [System.Net.ServicePointManager]::Expect100Continue = $false
+                [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true}
             }
 
             $requestStream = $webRequest.GetRequestStream()
