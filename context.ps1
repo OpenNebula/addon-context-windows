@@ -640,10 +640,13 @@ function extendPartitions()
 {
     Write-Output "- Extend partitions"
 
+    "rescan" | diskpart
+
     #$diskIds = ((wmic diskdrive get Index | Select-String "[0-9]+") -replace '\D','')
     $diskId = 0
 
-    $partIds = ((wmic partition where DiskIndex=$diskId get Index | Select-String "[0-9]+") -replace '\D','' | %{[int]$_ + 1})
+    #$partIds = ((wmic partition where DiskIndex=$diskId get Index | Select-String "[0-9]+") -replace '\D','' | %{[int]$_ + 1})
+    $partIds = "select disk $diskId", "list partition" | diskpart | Select-String -Pattern "^  Partition \d" -AllMatches | %{$_.matches} | %{$_.value.replace("  Partition ", "") }
 
     ForEach ($partId in $partIds) {
         extendPartition $diskId $partId
