@@ -22,7 +22,21 @@
 #####        DETI/IEETA Universidade de Aveiro 2011         #####
 #################################################################
 
-Start-Transcript -Append -Path "$env:SystemDrive\.opennebula-context.out" | Out-Null
+# global variable pointing to the private .contextualization directory
+$global:ctxDir="$env:SystemDrive\.contextualization"
+
+# Check, if above defined context directory exists
+If ( !(Test-Path "$ctxDir") ) {
+  mkdir "$ctxDir"
+}
+
+# Move old logfile away - so we have a current log containing the output of the last boot
+If ( Test-Path "$ctxDir\opennebula-context.log" ) {
+  mv "$ctxDir\opennebula-context.log" "$ctxDir\opennebula-context-old.log"
+}
+
+# Start now logging to logfile
+Start-Transcript -Append -Path "$ctxDir\opennebula-context.log" | Out-Null
 
 Write-Output "Running Script: $($MyInvocation.InvocationName)"
 Get-Date
@@ -458,10 +472,10 @@ function renameComputer($context) {
     }
 
     # Check for the .opennebula-renamed file
-    If (Test-Path "$env:SystemDrive\.opennebula-renamed") {
+    If (Test-Path "$ctxDir\.opennebula-renamed") {
 
         # Grab the JSON content
-        $json = Get-Content -Path "$env:SystemDrive\.opennebula-renamed" `
+        $json = Get-Content -Path "$ctxDir\.opennebula-renamed" `
                 | Out-String
 
         # Convert to a Hash Table and set the Logged Hostname
@@ -476,7 +490,7 @@ function renameComputer($context) {
         }
     }
 
-    If ((!(Test-Path "$env:SystemDrive\.opennebula-renamed")) -or `
+    If ((!(Test-Path "$ctxDir\.opennebula-renamed")) -or `
         ($context_hostname.ToLower() -ne $logged_hostname.ToLower())) {
 
         # .opennebula-renamed not found or the logged_name does not match the
@@ -491,7 +505,7 @@ function renameComputer($context) {
 
         $contents = @{}
         $contents["ComputerName"] = $context_hostname
-        ConvertTo-Json $contents | Out-File "$env:SystemDrive\.opennebula-renamed"
+        ConvertTo-Json $contents | Out-File "$ctxDir\.opennebula-renamed"
 
         # Check success
         If ($ret.ReturnValue) {
@@ -619,7 +633,7 @@ function runScripts($context, $contextLetter)
     If ($startScript) {
 
         # Save the script as .opennebula-startscript.ps1
-        $startScriptPS = "$env:SystemDrive\.opennebula-startscript.ps1"
+        $startScriptPS = "$ctxDir\.opennebula-startscript.ps1"
         $startScript | Out-File $startScriptPS "UTF8"
 
         # Launch the Script
@@ -772,8 +786,8 @@ if ($contextDrive) {
         exit 1
     }
 
-    [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($vmwareContext)) | Out-File "$env:SystemDrive\context.sh" "UTF8"
-    $contextScriptPath = "$env:SystemDrive\context.sh"
+    [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($vmwareContext)) | Out-File "$ctxDir\context.sh" "UTF8"
+    $contextScriptPath = "$ctxDir\context.sh"
 }
 
 # Execute script
