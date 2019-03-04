@@ -24,6 +24,26 @@
 
 Start-Transcript -Append -Path "$env:SystemDrive\.opennebula-context.out" | Out-Null
 
+## check if we are running powershell(x86) on a 64bit system, if so restart as 64bit
+## initial code: http://cosmonautdreams.com/2013/09/03/Getting-Powershell-to-run-in-64-bit.html
+If ($env:PROCESSOR_ARCHITEW6432 -eq "AMD64") {
+    # This is only set in a x86 Powershell running on a 64bit Windows
+    Write-Output "- Detected 32bit architecture"
+
+    Write-Output "Restarting into a 64bit powershell"
+
+    # Stop-Transcript here new - unlock logfile
+    Stop-Transcript | Out-Null
+
+    If ($myInvocation.Line) {
+        &"$env:WINDIR\sysnative\windowspowershell\v1.0\powershell.exe" -NonInteractive -NoProfile $myInvocation.Line
+    } Else {
+        &"$env:WINDIR\sysnative\windowspowershell\v1.0\powershell.exe" -NonInteractive -NoProfile -file "$($myInvocation.InvocationName)" $args
+    }
+
+    exit $lastexitcode
+}
+
 Write-Output "Running Script: $($MyInvocation.InvocationName)"
 Get-Date
 Write-Output ""
