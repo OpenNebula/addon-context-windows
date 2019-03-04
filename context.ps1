@@ -450,7 +450,8 @@ function renameComputer($context) {
 
     # Initialize Variables
     $current_hostname = hostname
-    $context_hostname = $context["SET_HOSTNAME"]
+    $thostname = $context["SET_HOSTNAME"]
+    $context_hostname = $thostname.split(".",50)[0]
     $logged_hostname = "Unknown"
 
     if (! $context_hostname) {
