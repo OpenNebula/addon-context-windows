@@ -451,10 +451,31 @@ function renameComputer($context) {
     # Initialize Variables
     $current_hostname = hostname
     $context_hostname = $context["SET_HOSTNAME"]
-    $logged_hostname = "Unknown"
+    $logged_hostname  = "Unknown"
 
     if (! $context_hostname) {
         return
+    }
+
+    $splitted_hostname = $context_hostname.split('.')
+    $context_hostname  = $splitted_hostname[0]
+    $context_domain    = $splitted_hostname[1..$splitted_hostname.length] -join '.'
+
+    If ($context_domain) {
+        Write-Output "Changing Domain to $context_domain"
+
+        $networkConfig = Get-WmiObject Win32_NetworkAdapterConfiguration -filter "ipenabled = 'true'"
+        $ret = $networkConfig.SetDnsDomain($context_domain)
+
+        If ($ret.ReturnValue) {
+
+            # Returned Non Zero, Failed, No restart
+            Write-Output ("  ... Failed: " + $ret.ReturnValue.ToString())
+        } Else {
+
+            # Returned Zero, Success
+            Write-Output " ... Success"
+        }
     }
 
     # Check for the .opennebula-renamed file
