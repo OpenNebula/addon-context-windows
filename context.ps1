@@ -778,6 +778,15 @@ function reportReady()
     }
 }
 
+function EjectContext($DriveLetter, $eContext)
+{
+    if ($eContext -and $eContext.ToUpper() -eq 'YES') {
+        Write-Output 'Ejecting context CD'
+        $driveEject = New-Object -comObject Shell.Application
+        $driveEject.Namespace(17).ParseName($DriveLetter).InvokeVerb('Eject')
+    }
+}
+
 ################################################################################
 # Main
 ################################################################################
@@ -799,8 +808,9 @@ if ($contextDrive) {
     Write-Output "  ... Found"
 
     # At this point we can obtain the letter of the contextDrive
-    $contextLetter     = $contextDrive.Name
-    $contextScriptPath = $contextLetter + "context.sh"
+    $contextLetter      = $contextDrive.Name
+    $contextDriveLetter =  $contextDrive.DriveLetter
+    $contextScriptPath  = $contextLetter + "context.sh"
 } else {
     Write-Output "  ... Not found"
     Write-Output "- Looking for VMware tools"
@@ -842,7 +852,7 @@ if(Test-Path $contextScriptPath) {
     configureNetwork $context
     runScripts $context $contextLetter
     reportReady
+    EjectContext $contextDriveLetter $context['EJECT_CONTEXT']
 }
 
 Stop-Transcript | Out-Null
-
