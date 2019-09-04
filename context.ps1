@@ -437,6 +437,7 @@ function configureNetwork($context) {
             $aliasIp6       = $context[$aliasPrefix + '_IP6']
             $aliasIp6ULA    = $context[$aliasPrefix + '_IP6_ULA']
             $aliasIp6Prefix = $context[$aliasPrefix + '_IP6_PREFIX_LENGTH']
+            $detach         = $context[$aliasPrefix + '_DETACH']
 
             if (!$aliasNetmask) {
                 $aliasNetmask = "255.255.255.0"
@@ -446,7 +447,7 @@ function configureNetwork($context) {
                 $aliasIp6Prefix = "64"
             }
 
-            if ($aliasIp) {
+            if ($aliasIp -and !$detach) {
                 Write-Output "- Set Additional Static IP (${aliasPrefix})"
                 netsh interface ipv4 add address $nic.InterfaceIndex $aliasIp $aliasNetmask
 
@@ -457,7 +458,7 @@ function configureNetwork($context) {
                 }
             }
 
-            if ($aliasIp6) {
+            if ($aliasIp6 -and !$detach) {
                 Write-Output "- Set Additional IPv6 Address (${aliasPrefix})"
                 netsh interface ipv6 add address $nic.InterfaceIndex $aliasIp6/$aliasIp6Prefix
                 If ($? -And $aliasIp6ULA) {
