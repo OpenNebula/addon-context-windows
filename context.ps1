@@ -23,7 +23,7 @@
 #################################################################
 
 # global variable pointing to the private .contextualization directory
-$global:ctxDir="$env:SystemDrive\.contextualization"
+$global:ctxDir="$env:SystemDrive\.onecontext"
 
 # Check, if above defined context directory exists
 If ( !(Test-Path "$ctxDir") ) {
@@ -481,6 +481,22 @@ function configureNetwork($context) {
     Write-Output ""
 }
 
+function setTimeZone($context) {
+    $timezone = $context['TIMEZONE']
+
+    If ($timezone) {
+        Write-Output "Configuring time zone '${timezone}'"
+
+        tzutil /s "${timezone}"
+
+        If ($?) {
+            Write-Output '  ... Success'
+        } Else {
+            Write-Output '  ... Failed'
+        }
+    }
+}
+
 function renameComputer($context) {
 
     # Initialize Variables
@@ -835,7 +851,9 @@ if ($contextDrive) {
 # Execute script
 if(Test-Path $contextScriptPath) {
     $context = getContext $contextScriptPath
+
     extendPartitions
+    setTimeZone $context
     renameComputer $context
     addLocalUser $context
     enableRemoteDesktop
