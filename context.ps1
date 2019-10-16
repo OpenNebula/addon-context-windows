@@ -745,17 +745,18 @@ function reportReady()
             return
         }
 
-        try {
-            if (!$token) {
-              Write-Output " ... Token not set. Try file"
-              $tokenPath = $contextLetter + 'token.txt'
-              if (Test-Path $tokenPath) {
-                  $token = Get-Content $tokenPath
-              } else {
-                  Write-Output " ... Failed: Token file not found"
-                  return
-              }
+        if (!$token) {
+            Write-Output " ... Token not set. Try file"
+            $tokenPath = $contextLetter + 'token.txt'
+            if (Test-Path $tokenPath) {
+                $token = Get-Content $tokenPath
+            } else {
+                Write-Output " ... Failed: Token file not found"
+                return
             }
+        }
+
+        try {
 
             $body = 'READY = YES'
             $target= $oneGateEndpoint + '/vm'
