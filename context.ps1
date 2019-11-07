@@ -730,6 +730,7 @@ function reportReady()
     $reportReady     = $context['REPORT_READY']
     $oneGateEndpoint = $context['ONEGATE_ENDPOINT']
     $vmId            = $context['VMID']
+    $token           = $context['ONEGATE_TOKEN']
 
     if ($reportReady -and $reportReady.ToUpper() -eq 'YES') {
         Write-Output 'Report Ready to OneGate'
@@ -744,7 +745,8 @@ function reportReady()
             return
         }
 
-        try {
+        if (!$token) {
+            Write-Output " ... Token not set. Try file"
             $tokenPath = $contextLetter + 'token.txt'
             if (Test-Path $tokenPath) {
                 $token = Get-Content $tokenPath
@@ -752,6 +754,9 @@ function reportReady()
                 Write-Output " ... Failed: Token file not found"
                 return
             }
+        }
+
+        try {
 
             $body = 'READY = YES'
             $target= $oneGateEndpoint + '/vm'
@@ -864,4 +869,3 @@ if(Test-Path $contextScriptPath) {
 }
 
 Stop-Transcript | Out-Null
-
