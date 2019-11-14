@@ -36,7 +36,7 @@ fi
 ###
 
 NAME=${NAME:-one-context}
-VERSION=${VERSION:-5.8.0}
+VERSION=${VERSION:-5.10.0}
 RELEASE=${RELEASE:-1}
 LABEL="${NAME}-${VERSION}"
 
