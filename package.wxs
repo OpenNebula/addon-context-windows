@@ -42,6 +42,10 @@
     <Directory Id="TARGETDIR" Name="SourceDir">
       <Directory Id="ProgramFilesFolder" Name="PFiles">
         <Directory Id="INSTALLDIR" Name="OpenNebula">
+          <Component Id="Examples" Guid="fc1207c2-06e9-11ea-ad15-f0def1753696">
+            <File Id="unattend" Name="unattend.xml" DiskId="1" Source="unattend.xml" KeyPath="yes" />
+          </Component>
+
           <Component Id="Context" Guid="f5807056-bf0c-11e6-acbe-f0def1753696">
             <File Id="context" Name="context.ps1" DiskId="1" Source="context.ps1" KeyPath="yes" />
           </Component>
@@ -83,6 +87,7 @@
     <Feature Id="Complete" Level="1">
       <ComponentRef Id="Context"/>
       <ComponentRef Id="Service"/>
+      <ComponentRef Id="Examples"/>
     </Feature>
 
     <InstallExecuteSequence>
