@@ -438,6 +438,11 @@ function configureNetwork($context) {
             $aliasIp6ULA    = $context[$aliasPrefix + '_IP6_ULA']
             $aliasIp6Prefix = $context[$aliasPrefix + '_IP6_PREFIX_LENGTH']
             $detach         = $context[$aliasPrefix + '_DETACH']
+            $external       = $context[$aliasPrefix + '_EXTERNAL']
+
+            if ($external -and ($external -eq "YES")) {
+                continue
+            }
 
             if (!$aliasNetmask) {
                 $aliasNetmask = "255.255.255.0"
