@@ -187,6 +187,7 @@ function configureNetwork($context) {
         $ip6PrefixKey = $nicPrefix + "IP6_PREFIX_LENGTH"
         $gw6Key       = $nicPrefix + "GATEWAY6"
         $mtuKey       = $nicPrefix + "MTU"
+        $metricKey    = $nicPrefix + "METRIC"
 
         $ip        = $context[$ipKey]
         $netmask   = $context[$netmaskKey]
@@ -197,6 +198,7 @@ function configureNetwork($context) {
         $gateway   = $context[$gatewayKey]
         $network   = $context[$networkKey]
         $mtu       = $context[$mtuKey]
+        $metric    = $context[$metricKey]
 
         $ip6       = $context[$ip6Key]
         $ip6ULA    = $context[$ip6ULAKey]
@@ -276,8 +278,13 @@ function configureNetwork($context) {
             if ($gateway) {
 
                 # Set the Gateway
-                Write-Output "- Set Gateway"
-                $ret = $nic.SetGateways($gateway)
+                if ($metric) {
+                    Write-Output "- Set Gateway with metric"
+                    $ret = $nic.SetGateways($gateway, $metric)
+                } Else {
+                    Write-Output "- Set Gateway"
+                    $ret = $nic.SetGateways($gateway)
+                }
                 If ($ret.ReturnValue) {
                     Write-Output ("  ... Failed: " + $ret.ReturnValue.ToString())
                 } Else {
