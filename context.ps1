@@ -514,10 +514,26 @@ function renameComputer($context) {
     # Initialize Variables
     $current_hostname = hostname
     $context_hostname = $context["SET_HOSTNAME"]
-    $logged_hostname  = "Unknown"
 
+    # SET_HOSTNAME was not set but maybe DNS_HOSTNAME was...
     if (! $context_hostname) {
-        return
+        $dns_hostname = $context["DNS_HOSTNAME"].ToLower()
+
+        if ($dns_hostname -eq "yes") {
+
+            # we will set our hostname based on the reverse dns lookup - the IP
+            # in question is the first one with a set default gateway
+            # (as is done by get_first_ip in addon-context-linux)
+
+            Write-Output "Requested change of Hostname via reverse DNS lookup (DNS_HOSTNAME=YES)"
+            $first_ip = (Get-WmiObject -Class Win32_NetworkAdapterConfiguration | where {$_.DefaultIPGateway -ne $null}).IPAddress | select-object -first 1
+            $context_hostname = [System.Net.Dns]::GetHostbyAddress($first_ip).HostName
+            Write-Output "Resolved Hostname is: $context_hostname"
+        } Else {
+
+            # no SET_HOSTNAME or DNS_HOSTNAME - skip setting hostname
+            return
+        }
     }
 
     $splitted_hostname = $context_hostname.split('.')
@@ -542,6 +558,7 @@ function renameComputer($context) {
     }
 
     # Check for the .opennebula-renamed file
+    $logged_hostname  = ""
     If (Test-Path "$ctxDir\.opennebula-renamed") {
 
         # Grab the JSON content
@@ -558,13 +575,24 @@ function renameComputer($context) {
             Write-Output "Invalid JSON:"
             Write-Output $json.ToString()
         }
+    } Else {
+
+        # no renaming was ever done - we fallback to our current Hostname
+        $logged_hostname  = $current_hostname
     }
 
-    If ((!(Test-Path "$ctxDir\.opennebula-renamed")) -or `
-        ($context_hostname.ToLower() -ne $logged_hostname.ToLower())) {
+    If (($current_hostname -ne $context_hostname) -and `
+            ($context_hostname -eq $logged_hostname)) {
 
-        # .opennebula-renamed not found or the logged_name does not match the
-        # context_name, rename the computer
+        # avoid rename->reboot loop - if we detect that rename attempt was done
+        # but failed then we drop log message about it and finish...
+
+        Write-Output "Computer Rename Attempted but failed:"
+        Write-Output "- Current: $current_hostname"
+        Write-Output "- Context: $context_hostname"
+    } ElseIf ($context_hostname -ne $current_hostname) {
+
+        # the current_name does not match the context_name, rename the computer
 
         Write-Output "Changing Hostname to $context_hostname"
         # Load the ComputerSystem Object
@@ -599,17 +627,12 @@ function renameComputer($context) {
             # Exit here so the script doesn't continue to run
             Exit 0
         }
-    } else {
-        If ($current_hostname -eq $context_hostname) {
-            Write-Output "Computer Name already set: $context_hostname"
-        }
-        ElseIf (($current_hostname -ne $context_hostname) -and `
-                ($context_hostname -eq $logged_hostname)) {
-            Write-Output "Computer Rename Attempted but failed:"
-            Write-Output "- Current: $current_hostname"
-            Write-Output "- Context: $context_hostname"
-        }
+    } Else {
+
+        # Hostname is set and correct
+        Write-Output "Computer Name already set: $context_hostname"
     }
+
     Write-Output ""
 }
 
@@ -871,11 +894,11 @@ if(Test-Path $contextScriptPath) {
 
     extendPartitions
     setTimeZone $context
-    renameComputer $context
     addLocalUser $context
     enableRemoteDesktop
     enablePing
     configureNetwork $context
+    renameComputer $context
     runScripts $context $contextLetter
     reportReady
 }
