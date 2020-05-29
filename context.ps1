@@ -835,6 +835,28 @@ function reportReady()
     }
 }
 
+function ejectContextCD($cdrom_drive)
+{
+    $eject_cdrom = $context['EJECT_CDROM']
+
+    if ($eject_cdrom -ne $null -and $eject_cdrom.ToUpper() -eq 'YES') {
+        Write-Output 'Ejecting context CD'
+        try {
+            $disk_master = New-Object -ComObject IMAPI2.MsftDiscMaster2
+            for ($cdrom_id = 0; $cdrom_id -lt $disk_master.Count; $cdrom_id++) {
+                $disk_recorder = New-Object -ComObject IMAPI2.MsftDiscRecorder2
+                $disk_recorder.InitializeDiscRecorder($disk_master.Item($cdrom_id))
+                if ($disk_recorder.VolumeName -eq $cdrom_drive.DeviceID) {
+                    $disk_recorder.EjectMedia()
+                    break
+                }
+            }
+        } catch {
+            Write-Error "Failed to eject the CD: $_"
+        }
+    }
+}
+
 ################################################################################
 # Main
 ################################################################################
@@ -901,6 +923,7 @@ if(Test-Path $contextScriptPath) {
     renameComputer $context
     runScripts $context $contextLetter
     reportReady
+    ejectContextCD $contextDrive
 }
 
 Stop-Transcript | Out-Null
