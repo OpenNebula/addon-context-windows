@@ -517,9 +517,9 @@ function renameComputer($context) {
 
     # SET_HOSTNAME was not set but maybe DNS_HOSTNAME was...
     if (! $context_hostname) {
-        $dns_hostname = $context["DNS_HOSTNAME"].ToLower()
+        $dns_hostname = $context["DNS_HOSTNAME"]
 
-        if ($dns_hostname -eq "yes") {
+        if ($dns_hostname -ne $null -and $dns_hostname.ToUpper() -eq "YES") {
 
             # we will set our hostname based on the reverse dns lookup - the IP
             # in question is the first one with a set default gateway
@@ -531,7 +531,7 @@ function renameComputer($context) {
             Write-Output "Resolved Hostname is: $context_hostname"
         } Else {
 
-            # no SET_HOSTNAME or DNS_HOSTNAME - skip setting hostname
+            # no SET_HOSTNAME nor DNS_HOSTNAME - skip setting hostname
             return
         }
     }
