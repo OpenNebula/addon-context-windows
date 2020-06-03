@@ -837,6 +837,10 @@ function reportReady()
 
 function ejectContextCD($cdrom_drive)
 {
+    if (-Not $cdrom_drive) {
+        return
+    }
+
     $eject_cdrom = $context['EJECT_CDROM']
 
     if ($eject_cdrom -ne $null -and $eject_cdrom.ToUpper() -eq 'YES') {
@@ -854,6 +858,14 @@ function ejectContextCD($cdrom_drive)
         } catch {
             Write-Error "Failed to eject the CD: $_"
         }
+    }
+}
+
+function removeContextFile($context_file)
+{
+    if (Test-Path $context_file) {
+        Write-Output "Removing the 'context.sh' file"
+        Remove-Item $context_file
     }
 }
 
@@ -924,6 +936,7 @@ if(Test-Path $contextScriptPath) {
     runScripts $context $contextLetter
     reportReady
     ejectContextCD $contextDrive
+    removeContextFile $contextScriptPath
 }
 
 Stop-Transcript | Out-Null
