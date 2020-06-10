@@ -793,7 +793,7 @@ function reportReady()
 
         try {
 
-            $body = 'READY = YES'
+            $body = 'READY=YES'
             $target= $oneGateEndpoint + '/vm'
 
             [System.Net.HttpWebRequest] $webRequest = [System.Net.WebRequest]::Create($target)
@@ -935,7 +935,14 @@ if(Test-Path $contextScriptPath) {
     renameComputer $context
     runScripts $context $contextLetter
     reportReady
+}
+
+# Cleanup at the end
+if ($contextDrive) {
+    # Eject CD with 'context.sh' if requested
     ejectContextCD $contextDrive
+} else {
+    # Delete 'context.sh' if not on CD-ROM
     removeContextFile $contextScriptPath
 }
 
