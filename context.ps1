@@ -85,6 +85,12 @@ function envContext($context) {
     }
 }
 
+function contextChanged($file, $last_checksum) {
+    $new_checksum = Get-FileHash -Algorithm SHA256 $file
+    $ret = $last_checksum.Hash -ne $new_checksum.Hash
+    return $ret
+}
+
 function addLocalUser($context) {
     # Create new user
     $username =  $context["USERNAME"]
@@ -863,7 +869,7 @@ function ejectContextCD($cdrom_drive)
 
 function removeContextFile($context_file)
 {
-    if (Test-Path $context_file) {
+    if ($context_file -ne "" -and (Test-Path $context_file)) {
         Write-Output "Removing the 'context.sh' file"
         Remove-Item $context_file
     }
@@ -880,52 +886,78 @@ if (-Not (Get-WMIObject -ErrorAction SilentlyContinue Win32_Volume)) {
     exit 1
 }
 
-Write-Output "Detecting contextualization data"
-Write-Output "- Looking for CONTEXT ISO"
+# infinite loop
+$checksum = ""
+do {
 
-# Get all drives and select only the one that has "CONTEXT" as a label
-$contextDrive = Get-WMIObject Win32_Volume | ? { $_.Label -eq "CONTEXT" }
+    $contextScriptPath = ""
 
-if ($contextDrive) {
-    Write-Output "  ... Found"
+    # Stay in this wait-loop until context.sh emerges
+    do {
 
-    # At this point we can obtain the letter of the contextDrive
-    $contextLetter     = $contextDrive.Name
-    $contextScriptPath = $contextLetter + "context.sh"
-} else {
-    Write-Output "  ... Not found"
-    Write-Output "- Looking for VMware tools"
+        Write-Output "Detecting contextualization data"
+        Write-Output "- Looking for CONTEXT ISO"
 
-    # Try the VMware API
-    foreach ($pf in ${env:ProgramFiles}, ${env:ProgramFiles(x86)}, ${env:ProgramW6432}) {
-        $vmtoolsd = "${pf}\VMware\VMware Tools\vmtoolsd.exe"
-        if (Test-Path $vmtoolsd) {
-            Write-Output "  ... Found in ${vmtoolsd}"
-            break
+        # Get all drives and select only the one that has "CONTEXT" as a label
+        $contextDrive = Get-WMIObject Win32_Volume | ? { $_.Label -eq "CONTEXT" }
+
+        if ($contextDrive) {
+            Write-Output "  ... Found"
+
+            # At this point we can obtain the letter of the contextDrive
+            $contextLetter     = $contextDrive.Name
+            $contextScriptPath = $contextLetter + "context.sh"
         } else {
-            Write-Output "  ... Not found in ${vmtoolsd}"
+            Write-Output "  ... Not found"
+            Write-Output "- Looking for VMware tools"
+
+            # Try the VMware API
+            foreach ($pf in ${env:ProgramFiles}, ${env:ProgramFiles(x86)}, ${env:ProgramW6432}) {
+                $vmtoolsd = "${pf}\VMware\VMware Tools\vmtoolsd.exe"
+                if (Test-Path $vmtoolsd) {
+                    Write-Output "  ... Found in ${vmtoolsd}"
+                    break
+                } else {
+                    Write-Output "  ... Not found in ${vmtoolsd}"
+                }
+            }
+
+            $vmwareContext = ""
+            if (Test-Path $vmtoolsd) {
+                $vmwareContext = & $vmtoolsd --cmd "info-get guestinfo.opennebula.context" | Out-String
+            }
+
+            if ("$vmwareContext" -ne "") {
+                [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($vmwareContext)) | Out-File "$ctxDir\context.sh" "UTF8"
+                $contextScriptPath = "$ctxDir\context.sh"
+            }
+
         }
-    }
 
-    $vmwareContext = ""
-    if (Test-Path $vmtoolsd) {
-        $vmwareContext = & $vmtoolsd --cmd "info-get guestinfo.opennebula.context" | Out-String
-    }
+        # Terminate the wait-loop only when context.sh is found and changed
+        if ([string]$contextScriptPath -ne "" -and (Test-Path $contextScriptPath)) {
+            Write-Output "Found contextualization data: $contextScriptPath"
 
-    if ("$vmwareContext" -eq "") {
-        Write-Host "No contextualization data found"
-        Stop-Transcript | Out-Null
-        exit 1
-    }
+            # Context must differ
+            if (contextChanged $contextScriptPath $checksum) {
+                Break
+            } else {
+                Write-Output "Contextualization data were not changed"
+            }
+        } else {
+            Write-Output "No contextualization data found"
+        }
 
-    [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($vmwareContext)) | Out-File "$ctxDir\context.sh" "UTF8"
-    $contextScriptPath = "$ctxDir\context.sh"
-}
+        $sleep = 30
+        Write-Output "  ... Sleep for $($sleep)s ..."
+        Write-Output ""
+        Start-Sleep -Seconds $sleep
+    } while ($true)
 
-# Execute script
-if(Test-Path $contextScriptPath) {
+    # Parse context file
     $context = getContext $contextScriptPath
 
+    # Execute the contextualization actions
     extendPartitions
     setTimeZone $context
     addLocalUser $context
@@ -935,15 +967,23 @@ if(Test-Path $contextScriptPath) {
     renameComputer $context
     runScripts $context $contextLetter
     reportReady
-}
 
-# Cleanup at the end
-if ($contextDrive) {
-    # Eject CD with 'context.sh' if requested
-    ejectContextCD $contextDrive
-} else {
-    # Delete 'context.sh' if not on CD-ROM
-    removeContextFile $contextScriptPath
-}
+    # Save the context.sh checksum for the next recontextualization
+    Write-Output "Calculating the checksum of the file: $contextScriptPath"
+    $checksum = Get-FileHash -Algorithm SHA256 $contextScriptPath
+    Write-Output "  ... $($checksum.Hash)"
+
+    # Cleanup at the end
+    if ($contextDrive) {
+        # Eject CD with 'context.sh' if requested
+        ejectContextCD $contextDrive
+    } else {
+        # Delete 'context.sh' if not on CD-ROM
+        removeContextFile $contextScriptPath
+    }
+
+    Write-Output ""
+
+} while ($true)
 
 Stop-Transcript | Out-Null
