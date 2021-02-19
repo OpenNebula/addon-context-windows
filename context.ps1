@@ -93,7 +93,11 @@ function contextChanged($file, $last_checksum) {
 
 function waitForContext($checksum) {
     # This object will be set and returned at the end
-    $contextPaths = New-Object PsObject -Property @{fullpath=null ; drive=null}
+    $contextPaths = New-Object PsObject -Property @{
+        contextScriptPath=$null ;
+        contextDrive=$null ;
+        contextLetter=$null
+        }
 
     # How long to wait before another poll (in seconds)
     $sleep = 30
@@ -160,9 +164,9 @@ function waitForContext($checksum) {
         Start-Sleep -Seconds $sleep
     } while ($true)
 
-    $contextPaths.contextScriptPath = $contextScriptPath
-    $contextPaths.contextDrive = $contextDrive
-    $contextPaths.contextLetter = $contextLetter
+    $contextPaths.contextScriptPath = [string]$contextScriptPath
+    $contextPaths.contextDrive = [string]$contextDrive
+    $contextPaths.contextLetter = [string]$contextLetter
 
     return $contextPaths
 }
