@@ -108,7 +108,7 @@
               Wait="yes" />
 
             <RegistryKey Root="HKLM" Key="SYSTEM\CurrentControlSet\Services\onecontext\Parameters">
-              <RegistryValue Type="string" Name="CommandLine" Value="&quot;[PSEXE]&quot; -noExit -ExecutionPolicy Unrestricted -file &quot;[#context]&quot;" />
+              <RegistryValue Type="string" Name="CommandLine" Value="&quot;[PSEXE]&quot; -NonInteractive -NoProfile -ExecutionPolicy Unrestricted -file &quot;[#context]&quot;" />
               <RegistryValue Type="string" Name="PWD" Value="[INSTALLDIR]" />
             </RegistryKey>
           </Component>

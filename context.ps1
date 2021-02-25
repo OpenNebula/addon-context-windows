@@ -26,11 +26,13 @@
 # Functions
 ################################################################################
 
-function logmsg($message) {
+function logmsg($message)
+{
     Write-Host "[$(Get-Date -Format 'yyyy-MM-dd HH:mm K')] $message"
 }
 
-function getContext($file) {
+function getContext($file)
+{
     logmsg "* Loading Context File"
     $context = @{}
     switch -regex -file $file {
@@ -42,20 +44,23 @@ function getContext($file) {
     return $context
 }
 
-function envContext($context) {
+function envContext($context)
+{
     ForEach ($h in $context.GetEnumerator()) {
         $name = "Env:"+$h.Name
         Set-Item $name $h.Value
     }
 }
 
-function contextChanged($file, $last_checksum) {
+function contextChanged($file, $last_checksum)
+{
     $new_checksum = Get-FileHash -Algorithm SHA256 $file
     $ret = $last_checksum.Hash -ne $new_checksum.Hash
     return $ret
 }
 
-function waitForContext($checksum) {
+function waitForContext($checksum)
+{
     # This object will be set and returned at the end
     $contextPaths = New-Object PsObject -Property @{
         contextScriptPath=$null ;
@@ -149,7 +154,8 @@ function waitForContext($checksum) {
     return $contextPaths
 }
 
-function addLocalUser($context) {
+function addLocalUser($context)
+{
     # Create new user
     $username =  $context["USERNAME"]
     $password =  $context["PASSWORD"]
@@ -225,7 +231,8 @@ function addLocalUser($context) {
     Write-Host ""
 }
 
-function configureNetwork($context) {
+function configureNetwork($context)
+{
 
     # Get the NIC in the Context
     $nicIds = ($context.Keys | Where {$_ -match '^ETH\d+_IP6?$'} | ForEach-Object {$_ -replace '(^ETH|_IP$|_IP6$)',''} | Sort-Object -Unique)
@@ -557,7 +564,8 @@ function configureNetwork($context) {
     Write-Host ""
 }
 
-function setTimeZone($context) {
+function setTimeZone($context)
+{
     $timezone = $context['TIMEZONE']
 
     If ($timezone) {
@@ -573,8 +581,8 @@ function setTimeZone($context) {
     }
 }
 
-function renameComputer($context) {
-
+function renameComputer($context)
+{
     # Initialize Variables
     $current_hostname = hostname
     $context_hostname = $context["SET_HOSTNAME"]
@@ -774,7 +782,7 @@ function runScripts($context, $contextLetter)
             If (Test-Path $script) {
                 logmsg "- $script"
                 envContext($context)
-                & $script
+                pswrapper "$script"
             }
 
         }
@@ -797,7 +805,7 @@ function runScripts($context, $contextLetter)
         # Launch the Script
         logmsg "- $startScriptPS"
         envContext($context)
-        & $startScriptPS
+        pswrapper "$startScriptPS"
 
     }
     Write-Host ""
@@ -932,6 +940,20 @@ function removeContextFile($context_file)
     }
 }
 
+function pswrapper($path)
+{
+    If ($env:PROCESSOR_ARCHITEW6432 -eq "AMD64") {
+        # This is only set in a x86 Powershell running on a 64bit Windows
+
+        $realpath = [string]$(Resolve-Path "$path")
+
+        # Run 64bit powershell as a subprocess and there execute the command
+        & "$env:WINDIR\sysnative\windowspowershell\v1.0\powershell.exe" -NonInteractive -NoProfile -Command "$realpath"
+    } Else {
+        & "$path"
+    }
+}
+
 ################################################################################
 # Main
 ################################################################################
@@ -952,25 +974,34 @@ If ( Test-Path "$ctxDir\opennebula-context.log" ) {
 # Start now logging to logfile
 Start-Transcript -Append -Path "$ctxDir\opennebula-context.log" | Out-Null
 
-## check if we are running powershell(x86) on a 64bit system, if so restart as 64bit
-## initial code: http://cosmonautdreams.com/2013/09/03/Getting-Powershell-to-run-in-64-bit.html
-If ($env:PROCESSOR_ARCHITEW6432 -eq "AMD64") {
-    # This is only set in a x86 Powershell running on a 64bit Windows
-    logmsg "* Detected 32bit architecture - restarting into a 64bit powershell..."
+# TODO: Use a better mechanic to handle subshell and fix the orphan issue
+#
+# check if we are running powershell(x86) on a 64bit system, if so restart as 64bit
+# initial code: http://cosmonautdreams.com/2013/09/03/Getting-Powershell-to-run-in-64-bit.html
+# source: https://ss64.com/nt/syntax-64bit.html
+# NOTE:
+#   - virtual subdir 'sysnative' exists only when running 32bit binary under 64bit system
+#   - myInvocation usage was changed to utilize the correct properties
+#   - this solution will fail to terminate and it will create orphans
+#If ($env:PROCESSOR_ARCHITEW6432 -eq "AMD64") {
+#    # This is only set in a x86 Powershell running on a 64bit Windows
+#    logmsg "* Detected 32bit architecture - restarting into a 64bit powershell..."
+#
+#    # Stop-Transcript here new - unlock logfile
+#    Stop-Transcript | Out-Null
+#
+#    # run subprocess (windows does not have true unix-like exec)
+#    If ($MyInvocation.Line) {
+#        &"$env:WINDIR\sysnative\windowspowershell\v1.0\powershell.exe" -NonInteractive -NoProfile $MyInvocation.Line
+#    } Else {
+#        &"$env:WINDIR\sysnative\windowspowershell\v1.0\powershell.exe" -NonInteractive -NoProfile -file "$($MyInvocation.MyCommand.Path)" $args
+#    }
+#
+#    # end the parent process
+#    exit $lastexitcode
+#}
 
-    # Stop-Transcript here new - unlock logfile
-    Stop-Transcript | Out-Null
-
-    If ($myInvocation.Line) {
-        &"$env:WINDIR\sysnative\windowspowershell\v1.0\powershell.exe" -NonInteractive -NoProfile $myInvocation.Line
-    } Else {
-        &"$env:WINDIR\sysnative\windowspowershell\v1.0\powershell.exe" -NonInteractive -NoProfile -file "$($myInvocation.InvocationName)" $args
-    }
-
-    exit $lastexitcode
-}
-
-logmsg "* Running Script: $($MyInvocation.InvocationName)"
+logmsg "* Running Script: $($MyInvocation.MyCommand.Path)"
 
 Set-ExecutionPolicy unrestricted -force # not needed if already done once on the VM
 [string]$computerName = "$env:computername"
