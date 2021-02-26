@@ -64,13 +64,13 @@ e.g. `one-context-1.0.0.msi` in the `out/` directory.
 You can also built both the iso and msi targets like this:
 
 ```
-% ./generate-all.sh
+$ ./generate-all.sh
 ```
 
 Or with a different service manager and explicit version:
 
 ```
-% env SRV_MANAGER=rhsrvany VERSION=5.13 ./generate-all.sh
+$ env SRV_MANAGER=rhsrvany VERSION=5.13 ./generate-all.sh
 ```
 
 Please ignore following assertion on package build, which is caused
