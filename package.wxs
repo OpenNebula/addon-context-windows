@@ -93,7 +93,7 @@
           </Component>
 
           <Component Id="Context" Guid="f5807056-bf0c-11e6-acbe-f0def1753696">
-            <File Id="context" Name="context.ps1" DiskId="1" Source="context.ps1" KeyPath="yes" />
+            <File Id="context" Name="context.ps1" DiskId="1" Source="src/context.ps1" KeyPath="yes" />
           </Component>
 
           <Component Id="Service" Guid="687050a4-c237-11e6-9fe4-54a050d65572">
