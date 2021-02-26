@@ -56,16 +56,36 @@ fi
 set -e
 
 if [ "${TARGET}" = 'msi' ]; then
-    if [ ! -f rhsrvany.exe ]; then
-        if [ -f /usr/share/virt-tools/rhsrvany.exe ]; then
-            cp /usr/share/virt-tools/rhsrvany.exe .
-        else
-            echo 'Missing rhsrvany.exe' >&2
-            exit 1
-        fi
-    fi
+    # default to nssm.exe but fallback to rhsrvany.exe
+    _SRV_BINARY_NAME='nssm.exe'
+    _SRV_BINARY_FILE='nssm/win32/nssm.exe'
+    _SRV_BINARY_ARGS=''
 
-    wixl -D Version="${VERSION}" -o "${OUT}" package.wxs
+    if [ ! -f "${_SRV_BINARY_FILE}" ] ; then
+        echo "Warning: The default service binary is missing: ${_SRV_BINARY_FILE}"
+        echo "         Fallback to rhsrvany.exe..."
+
+        # reset the service binary to rhsrvany.exe
+        _SRV_BINARY_NAME='rhsrvany.exe'
+        _SRV_BINARY_FILE='rhsrvany.exe'
+        _SRV_BINARY_ARGS='-s onecontext'
+
+        if [ ! -f rhsrvany.exe ]; then
+            if [ -f /usr/share/virt-tools/rhsrvany.exe ]; then
+                cp /usr/share/virt-tools/rhsrvany.exe .
+            else
+                echo 'Error: Missing rhsrvany.exe'
+                exit 1
+            fi
+        fi
+
+    fi >&2
+
+    wixl -D Version="${VERSION}" \
+        -D SrvBinaryName="${_SRV_BINARY_NAME}" \
+        -D SrvBinaryFile="${_SRV_BINARY_FILE}" \
+        -D SrvBinaryArgs="${_SRV_BINARY_ARGS}" \
+        -o "${OUT}" package.wxs
 
 elif [ "${TARGET}" = 'iso' ]; then
     mkisofs -J -R -input-charset utf8 \
