@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------- #
-# Copyright 2002-2020, OpenNebula Project, OpenNebula Systems                #
+# Copyright 2002-2021, OpenNebula Project, OpenNebula Systems                #
 #                                                                            #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may    #
 # not use this file except in compliance with the License. You may obtain    #
@@ -942,12 +942,17 @@ function removeContextFile($context_file)
 
 function pswrapper($path)
 {
+    # source:
+    #   - http://cosmonautdreams.com/2013/09/03/Getting-Powershell-to-run-in-64-bit.html
+    #   - https://ss64.com/nt/syntax-64bit.html
     If ($env:PROCESSOR_ARCHITEW6432 -eq "AMD64") {
         # This is only set in a x86 Powershell running on a 64bit Windows
 
         $realpath = [string]$(Resolve-Path "$path")
 
         # Run 64bit powershell as a subprocess and there execute the command
+        #
+        # NOTE: virtual subdir 'sysnative' exists only when running 32bit binary under 64bit system
         & "$env:WINDIR\sysnative\windowspowershell\v1.0\powershell.exe" -NonInteractive -NoProfile -Command "$realpath"
     } Else {
         & "$path"
@@ -973,33 +978,6 @@ If ( Test-Path "$ctxDir\opennebula-context.log" ) {
 
 # Start now logging to logfile
 Start-Transcript -Append -Path "$ctxDir\opennebula-context.log" | Out-Null
-
-# TODO: Use a better mechanic to handle subshell and fix the orphan issue
-#
-# check if we are running powershell(x86) on a 64bit system, if so restart as 64bit
-# initial code: http://cosmonautdreams.com/2013/09/03/Getting-Powershell-to-run-in-64-bit.html
-# source: https://ss64.com/nt/syntax-64bit.html
-# NOTE:
-#   - virtual subdir 'sysnative' exists only when running 32bit binary under 64bit system
-#   - myInvocation usage was changed to utilize the correct properties
-#   - this solution will fail to terminate and it will create orphans
-#If ($env:PROCESSOR_ARCHITEW6432 -eq "AMD64") {
-#    # This is only set in a x86 Powershell running on a 64bit Windows
-#    logmsg "* Detected 32bit architecture - restarting into a 64bit powershell..."
-#
-#    # Stop-Transcript here new - unlock logfile
-#    Stop-Transcript | Out-Null
-#
-#    # run subprocess (windows does not have true unix-like exec)
-#    If ($MyInvocation.Line) {
-#        &"$env:WINDIR\sysnative\windowspowershell\v1.0\powershell.exe" -NonInteractive -NoProfile $MyInvocation.Line
-#    } Else {
-#        &"$env:WINDIR\sysnative\windowspowershell\v1.0\powershell.exe" -NonInteractive -NoProfile -file "$($MyInvocation.MyCommand.Path)" $args
-#    }
-#
-#    # end the parent process
-#    exit $lastexitcode
-#}
 
 logmsg "* Running Script: $($MyInvocation.MyCommand.Path)"
 

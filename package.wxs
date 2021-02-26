@@ -127,7 +127,7 @@
                 <RegistryValue Type="string" Name="AppParameters" Value="-NonInteractive -NoProfile -ExecutionPolicy Unrestricted -file &quot;[#context]&quot;" />
               </RegistryKey>
               <RegistryKey Root="HKLM" Key="SYSTEM\CurrentControlSet\Services\onecontext\Parameters\AppExit">
-                <!-- You can change this to "Restart" but I am not sure if it is desirable -->
+                <!-- You can change this to "Restart" but "Ignore" is compatible behavior with srvany and it will prevent unwanted recontextualization -->
                 <RegistryValue Type="string" Value="Ignore" />
               </RegistryKey>
             <?else?>
