@@ -39,6 +39,7 @@ NAME=${NAME:-one-context}
 VERSION=${VERSION:-5.12.0}
 RELEASE=${RELEASE:-1}
 LABEL="${NAME}-${VERSION}"
+SRV_MANAGER="${SRV_MANAGER:-nssm}"
 
 if [ "${RELEASE}" = '1' ]; then
     FILENAME=${FILENAME:-${NAME}-${VERSION}.${TARGET}}
@@ -56,29 +57,31 @@ fi
 set -e
 
 if [ "${TARGET}" = 'msi' ]; then
-    # default to nssm.exe but fallback to rhsrvany.exe
-    _SRV_BINARY_NAME='nssm.exe'
-    _SRV_BINARY_FILE='nssm/win32/nssm.exe'
-    _SRV_BINARY_ARGS=''
+    case "${SRV_MANAGER}" in
+        nssm)
+            _SRV_BINARY_NAME='nssm.exe'
+            _SRV_BINARY_FILE='nssm/win32/nssm.exe'
+            _SRV_BINARY_ARGS=''
+            ;;
+        rhsrvany)
+            _SRV_BINARY_NAME='rhsrvany.exe'
+            _SRV_BINARY_FILE='rhsrvany.exe'
+            _SRV_BINARY_ARGS='-s onecontext'
+
+            # in the rhsrvany case we might be able to use some os package
+            if [ ! -f rhsrvany.exe ]; then
+                if [ -f /usr/share/virt-tools/rhsrvany.exe ]; then
+                    cp /usr/share/virt-tools/rhsrvany.exe .
+                fi
+            fi
+            ;;
+    esac
 
     if [ ! -f "${_SRV_BINARY_FILE}" ] ; then
-        echo "Warning: The default service binary is missing: ${_SRV_BINARY_FILE}"
-        echo "         Fallback to rhsrvany.exe..."
-
-        # reset the service binary to rhsrvany.exe
-        _SRV_BINARY_NAME='rhsrvany.exe'
-        _SRV_BINARY_FILE='rhsrvany.exe'
-        _SRV_BINARY_ARGS='-s onecontext'
-
-        if [ ! -f rhsrvany.exe ]; then
-            if [ -f /usr/share/virt-tools/rhsrvany.exe ]; then
-                cp /usr/share/virt-tools/rhsrvany.exe .
-            else
-                echo 'Error: Missing rhsrvany.exe'
-                exit 1
-            fi
-        fi
-
+        echo "Error: The service binary is missing: ${_SRV_BINARY_FILE}"
+        exit 1
+    else
+        echo "Info: Using the binary: ${_SRV_BINARY_FILE}"
     fi >&2
 
     wixl -D Version="${VERSION}" \
