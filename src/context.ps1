@@ -28,7 +28,10 @@
 
 function logmsg($message)
 {
-    Write-Host "[$(Get-Date -Format 'yyyy-MM-dd HH:mm K')] $message"
+    # powershell 4 does not automatically add newline in the transcript so we
+    # workaround it by adding it explicitly and using the NoNewline argument
+    # we ensure that it will not be added twice
+    Write-Host "[$(Get-Date -Format 'yyyy-MM-dd HH:mm K')] $message`r`n" -NoNewline
 }
 
 function getContext($file)
@@ -73,11 +76,11 @@ function waitForContext($checksum)
 
     logmsg "* Starting a wait-loop with the interval of $sleep seconds..."
 
-    Write-Host ""
-    Write-Host "*********************** "
-    Write-Host "*** WAIT-LOOP START *** "
-    Write-Host "*********************** "
-    Write-Host ""
+    Write-Host "`r`n" -NoNewline
+    Write-Host "***********************`r`n" -NoNewline
+    Write-Host "*** WAIT-LOOP START ***`r`n" -NoNewline
+    Write-Host "***********************`r`n" -NoNewline
+    Write-Host "`r`n" -NoNewline
 
     do {
         logmsg "* Detecting contextualization data"
@@ -137,15 +140,15 @@ function waitForContext($checksum)
         }
 
         logmsg "  ... Sleep for $($sleep)s ..."
-        Write-Host ""
+        Write-Host "`r`n" -NoNewline
         Start-Sleep -Seconds $sleep
     } while ($true)
 
-    Write-Host ""
-    Write-Host "*********************** "
-    Write-Host "***  WAIT-LOOP END  *** "
-    Write-Host "*********************** "
-    Write-Host ""
+    Write-Host "`r`n" -NoNewline
+    Write-Host "***********************`r`n" -NoNewline
+    Write-Host "***  WAIT-LOOP END  ***`r`n" -NoNewline
+    Write-Host "***********************`r`n" -NoNewline
+    Write-Host "`r`n" -NoNewline
 
     $contextPaths.contextScriptPath = [string]$contextScriptPath
     $contextPaths.contextDrive = [string]$contextDrive
@@ -233,7 +236,7 @@ function addLocalUser($context)
             }
         }
     }
-    Write-Host ""
+    Write-Host "`r`n" -NoNewline
 }
 
 function configureNetwork($context)
@@ -566,7 +569,7 @@ function configureNetwork($context)
         }
     }
 
-    Write-Host ""
+    Write-Host "`r`n" -NoNewline
 }
 
 function setTimeZone($context)
@@ -688,9 +691,9 @@ function renameComputer($context)
 
             # Returned Non Zero, Failed, No restart
             logmsg ("  ... Failed: " + $ret.ReturnValue.ToString())
-            Write-Host "      Check the computername."
-            Write-Host "Possible Issues: The name cannot include control" `
-                       "characters, leading or trailing spaces, or any of" `
+            Write-Host "      Check the computername. "
+            Write-Host "Possible Issues: The name cannot include control " `
+                       "characters, leading or trailing spaces, or any of " `
                        "the following characters: `" / \ [ ] : | < > + = ; , ?"
 
         } Else {
@@ -711,7 +714,7 @@ function renameComputer($context)
         logmsg "* Computer Name already set: $context_hostname"
     }
 
-    Write-Host ""
+    Write-Host "`r`n" -NoNewline
 }
 
 function enableRemoteDesktop()
@@ -729,7 +732,7 @@ function enableRemoteDesktop()
     } Else {
         logmsg "  ... Success"
     }
-    Write-Host ""
+    Write-Host "`r`n" -NoNewline
 }
 
 function enablePing()
@@ -749,7 +752,7 @@ function enablePing()
         logmsg "  ... Failed"
     }
 
-    Write-Host ""
+    Write-Host "`r`n" -NoNewline
 }
 
 function doPing($ip, $retries=20)
@@ -813,7 +816,7 @@ function runScripts($context, $contextLetter)
         pswrapper "$startScriptPS"
 
     }
-    Write-Host ""
+    Write-Host "`r`n" -NoNewline
 }
 
 function extendPartition($disk, $part)
@@ -997,11 +1000,11 @@ if (-Not (Get-WMIObject -ErrorAction SilentlyContinue Win32_Volume)) {
     exit 1
 }
 
-Write-Host ""
-Write-Host "*********************************"
-Write-Host "*** ENTERING THE SERVICE LOOP ***"
-Write-Host "*********************************"
-Write-Host ""
+Write-Host "`r`n" -NoNewline
+Write-Host "*********************************`r`n" -NoNewline
+Write-Host "*** ENTERING THE SERVICE LOOP ***`r`n" -NoNewline
+Write-Host "*********************************`r`n" -NoNewline
+Write-Host "`r`n" -NoNewline
 
 # infinite loop
 $checksum = ""
@@ -1037,7 +1040,7 @@ do {
         removeContextFile $contextPaths.contextScriptPath
     }
 
-    Write-Host ""
+    Write-Host "`r`n" -NoNewline
 
 } while ($true)
 
