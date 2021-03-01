@@ -159,6 +159,11 @@ function addLocalUser($context)
     # Create new user
     $username =  $context["USERNAME"]
     $password =  $context["PASSWORD"]
+    $password64 = $context["PASSWORD_BASE64"]
+
+    If ($password64) {
+        $password = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($password64))
+    }
 
     if ($username -Or $password) {
 
