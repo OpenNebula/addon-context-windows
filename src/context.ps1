@@ -184,7 +184,8 @@ function addLocalUser($context)
             #             of this user. Use the User SID instead (S-1-5-21domain-500)
             $username = (Get-WmiObject -Class "Win32_UserAccount" |
                          where { $_.SID -like "S-1-5-21[0-9-]*-500" } |
-                         select -ExpandProperty Name)
+                         select -ExpandProperty Name |
+                         get-Unique -AsString)
         }
 
         logmsg "* Creating Account for $username"
