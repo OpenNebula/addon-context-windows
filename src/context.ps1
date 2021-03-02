@@ -822,7 +822,7 @@ function runScripts($context, $contextLetter)
         logmsg "- $startScriptPS"
         envContext($context)
         pswrapper "$startScriptPS"
-
+        removeFile "$startScriptPS"
     }
     Write-Host "`r`n" -NoNewline
 }
@@ -948,11 +948,11 @@ function ejectContextCD($cdrom_drive)
     }
 }
 
-function removeContextFile($context_file)
+function removeFile($file)
 {
-    if ($context_file -ne "" -and (Test-Path $context_file)) {
-        logmsg "* Removing the context file: ${context_file}"
-        Remove-Item $context_file -Force
+    if ($file -ne "" -and (Test-Path $file)) {
+        logmsg "* Removing the file: ${file}"
+        Remove-Item $file -Force
     }
 }
 
@@ -1039,7 +1039,7 @@ do {
     $checksum = Get-FileHash -Algorithm SHA256 $contextPaths.contextScriptPath
     logmsg "  ... $($checksum.Hash)"
     # and remove the file itself
-    removeContextFile $contextPaths.contextScriptPath
+    removeFile $contextPaths.contextScriptPath
 
     # Cleanup at the end
     if ($contextPaths.contextDrive) {
@@ -1047,7 +1047,7 @@ do {
         ejectContextCD $contextPaths.contextDrive
     } else {
         # Delete 'context.sh' if not on CD-ROM
-        removeContextFile $contextPaths.contextPath
+        removeFile $contextPaths.contextPath
     }
 
     Write-Host "`r`n" -NoNewline
