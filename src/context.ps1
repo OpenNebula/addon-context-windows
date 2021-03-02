@@ -67,6 +67,7 @@ function waitForContext($checksum)
     # This object will be set and returned at the end
     $contextPaths = New-Object PsObject -Property @{
         contextScriptPath=$null ;
+        contextPath=$null ;
         contextDrive=$null ;
         contextLetter=$null
         }
@@ -86,8 +87,8 @@ function waitForContext($checksum)
         logmsg "* Detecting contextualization data"
         logmsg "- Looking for CONTEXT ISO"
 
-        # Reset the contextScriptPath
-        $contextScriptPath = ""
+        # Reset the contextPath
+        $contextPath = ""
 
         # Get all drives and select only the one that has "CONTEXT" as a label
         $contextDrive = Get-WMIObject Win32_Volume | ? { $_.Label -eq "CONTEXT" }
@@ -97,7 +98,7 @@ function waitForContext($checksum)
 
             # At this point we can obtain the letter of the contextDrive
             $contextLetter     = $contextDrive.Name
-            $contextScriptPath = $contextLetter + "context.sh"
+            $contextPath = $contextLetter + "context.sh"
         } else {
             logmsg "  ... Not found"
             logmsg "- Looking for VMware tools"
@@ -120,17 +121,17 @@ function waitForContext($checksum)
 
             if ("$vmwareContext" -ne "") {
                 [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($vmwareContext)) | Out-File "$ctxDir\context.sh" "UTF8"
-                $contextScriptPath = "$ctxDir\context.sh"
+                $contextPath = "$ctxDir\context.sh"
             }
 
         }
 
         # Terminate the wait-loop only when context.sh is found and changed
-        if ([string]$contextScriptPath -ne "" -and (Test-Path $contextScriptPath)) {
-            logmsg "- Found contextualization data: $contextScriptPath"
+        if ([string]$contextPath -ne "" -and (Test-Path $contextPath)) {
+            logmsg "- Found contextualization data: $contextPath"
 
             # Context must differ
-            if (contextChanged $contextScriptPath $checksum) {
+            if (contextChanged $contextPath $checksum) {
                 Break
             } else {
                 logmsg "- Contextualization data were not changed"
@@ -150,8 +151,15 @@ function waitForContext($checksum)
     Write-Host "***********************`r`n" -NoNewline
     Write-Host "`r`n" -NoNewline
 
+    # make a copy of the context.sh in the case another event would happen and
+    # trigger a new context.sh while still working on the previous one which
+    # would result in a mismatched checksum...
+    $contextScriptPath = "$ctxDir\.opennebula-context.sh"
+    Copy-Item -Path $contextPath -Destination $contextScriptPath -Force
+
     $contextPaths.contextScriptPath = [string]$contextScriptPath
-    $contextPaths.contextDrive = [string]$contextDrive
+    $contextPaths.contextPath = [string]$contextPath
+    $contextPaths.contextDrive = $contextDrive
     $contextPaths.contextLetter = [string]$contextLetter
 
     return $contextPaths
@@ -943,8 +951,8 @@ function ejectContextCD($cdrom_drive)
 function removeContextFile($context_file)
 {
     if ($context_file -ne "" -and (Test-Path $context_file)) {
-        logmsg "* Removing the 'context.sh' file"
-        Remove-Item $context_file
+        logmsg "* Removing the context file: ${context_file}"
+        Remove-Item $context_file -Force
     }
 }
 
@@ -1026,10 +1034,12 @@ do {
     runScripts $context $contextPaths.contextLetter
     reportReady
 
-    # Save the context.sh checksum for the next recontextualization
+    # Save the 'applied' context.sh checksum for the next recontextualization
     logmsg "* Calculating the checksum of the file: $($contextPaths.contextScriptPath)"
     $checksum = Get-FileHash -Algorithm SHA256 $contextPaths.contextScriptPath
     logmsg "  ... $($checksum.Hash)"
+    # and remove the file itself
+    removeContextFile $contextPaths.contextScriptPath
 
     # Cleanup at the end
     if ($contextPaths.contextDrive) {
@@ -1037,7 +1047,7 @@ do {
         ejectContextCD $contextPaths.contextDrive
     } else {
         # Delete 'context.sh' if not on CD-ROM
-        removeContextFile $contextPaths.contextScriptPath
+        removeContextFile $contextPaths.contextPath
     }
 
     Write-Host "`r`n" -NoNewline
