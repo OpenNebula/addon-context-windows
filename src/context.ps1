@@ -97,7 +97,7 @@ function waitForContext($checksum)
             logmsg "  ... Found"
 
             # At this point we can obtain the letter of the contextDrive
-            $contextLetter     = $contextDrive.Name
+            $contextLetter = $contextDrive.Name
             $contextPath = $contextLetter + "context.sh"
         } else {
             logmsg "  ... Not found"
@@ -121,6 +121,7 @@ function waitForContext($checksum)
 
             if ("$vmwareContext" -ne "") {
                 [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($vmwareContext)) | Out-File "$ctxDir\context.sh" "UTF8"
+                $contextLetter = $env:SystemDrive + "\"
                 $contextPath = "$ctxDir\context.sh"
             }
 
@@ -794,8 +795,12 @@ function runScripts($context, $contextLetter)
         # Parse each script and run it
         ForEach ($script in $initscripts.split(" ")) {
 
-            $script = $contextLetter + $script
-            If (Test-Path $script) {
+            # If it is not an absolute path then try to assemble it
+            if (![System.IO.Path]::IsPathRooted($script)) {
+                $script = $contextLetter + $script
+            }
+
+            if (Test-Path $script) {
                 logmsg "- $script"
                 envContext($context)
                 pswrapper "$script"
@@ -808,11 +813,11 @@ function runScripts($context, $contextLetter)
     $startScript   = $context["START_SCRIPT"]
     $startScript64 = $context["START_SCRIPT_BASE64"]
 
-    If ($startScript64) {
+    if ($startScript64) {
         $startScript = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($startScript64))
     }
 
-    If ($startScript) {
+    if ($startScript) {
 
         # Save the script as .opennebula-startscript.ps1
         $startScriptPS = "$ctxDir\.opennebula-startscript.ps1"
