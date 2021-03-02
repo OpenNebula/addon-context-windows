@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # -------------------------------------------------------------------------- #
-# Copyright 2002-2020, OpenNebula Project, OpenNebula Systems                #
+# Copyright 2002-2021, OpenNebula Project, OpenNebula Systems                #
 #                                                                            #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may    #
 # not use this file except in compliance with the License. You may obtain    #
@@ -36,7 +36,7 @@ fi
 ###
 
 NAME=${NAME:-one-context}
-VERSION=${VERSION:-5.12.0}
+VERSION=${VERSION:-6.0.0}
 RELEASE=${RELEASE:-1}
 LABEL="${NAME}-${VERSION}"
 SRV_MANAGER="${SRV_MANAGER:-nssm}"
