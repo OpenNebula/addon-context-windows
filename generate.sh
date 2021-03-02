@@ -39,6 +39,7 @@ NAME=${NAME:-one-context}
 VERSION=${VERSION:-5.12.0}
 RELEASE=${RELEASE:-1}
 LABEL="${NAME}-${VERSION}"
+SRV_MANAGER="${SRV_MANAGER:-nssm}"
 
 if [ "${RELEASE}" = '1' ]; then
     FILENAME=${FILENAME:-${NAME}-${VERSION}.${TARGET}}
@@ -56,16 +57,38 @@ fi
 set -e
 
 if [ "${TARGET}" = 'msi' ]; then
-    if [ ! -f rhsrvany.exe ]; then
-        if [ -f /usr/share/virt-tools/rhsrvany.exe ]; then
-            cp /usr/share/virt-tools/rhsrvany.exe .
-        else
-            echo 'Missing rhsrvany.exe' >&2
-            exit 1
-        fi
-    fi
+    case "${SRV_MANAGER}" in
+        nssm)
+            _SRV_BINARY_NAME='nssm.exe'
+            _SRV_BINARY_FILE='nssm/win32/nssm.exe'
+            _SRV_BINARY_ARGS=''
+            ;;
+        rhsrvany)
+            _SRV_BINARY_NAME='rhsrvany.exe'
+            _SRV_BINARY_FILE='rhsrvany.exe'
+            _SRV_BINARY_ARGS='-s onecontext'
 
-    wixl -D Version="${VERSION}" -o "${OUT}" package.wxs
+            # in the rhsrvany case we might be able to use some os package
+            if [ ! -f rhsrvany.exe ]; then
+                if [ -f /usr/share/virt-tools/rhsrvany.exe ]; then
+                    cp /usr/share/virt-tools/rhsrvany.exe .
+                fi
+            fi
+            ;;
+    esac
+
+    if [ ! -f "${_SRV_BINARY_FILE}" ] ; then
+        echo "Error: The service binary is missing: ${_SRV_BINARY_FILE}"
+        exit 1
+    else
+        echo "Info: Using the binary: ${_SRV_BINARY_FILE}"
+    fi >&2
+
+    wixl -D Version="${VERSION}" \
+        -D SrvBinaryName="${_SRV_BINARY_NAME}" \
+        -D SrvBinaryFile="${_SRV_BINARY_FILE}" \
+        -D SrvBinaryArgs="${_SRV_BINARY_ARGS}" \
+        -o "${OUT}" package.wxs
 
 elif [ "${TARGET}" = 'iso' ]; then
     mkisofs -J -R -input-charset utf8 \

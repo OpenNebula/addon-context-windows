@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------- #
-# Copyright 2002-2020, OpenNebula Project, OpenNebula Systems                #
+# Copyright 2002-2021, OpenNebula Project, OpenNebula Systems                #
 #                                                                            #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may    #
 # not use this file except in compliance with the License. You may obtain    #
@@ -22,52 +22,21 @@
 #####        DETI/IEETA Universidade de Aveiro 2011         #####
 #################################################################
 
-# global variable pointing to the private .contextualization directory
-$global:ctxDir="$env:SystemDrive\.onecontext"
+################################################################################
+# Functions
+################################################################################
 
-# Check, if above defined context directory exists
-If ( !(Test-Path "$ctxDir") ) {
-  mkdir "$ctxDir"
+function logmsg($message)
+{
+    # powershell 4 does not automatically add newline in the transcript so we
+    # workaround it by adding it explicitly and using the NoNewline argument
+    # we ensure that it will not be added twice
+    Write-Host "[$(Get-Date -Format 'yyyy-MM-dd HH:mm K')] $message`r`n" -NoNewline
 }
 
-# Move old logfile away - so we have a current log containing the output of the last boot
-If ( Test-Path "$ctxDir\opennebula-context.log" ) {
-  mv "$ctxDir\opennebula-context.log" "$ctxDir\opennebula-context-old.log"
-}
-
-# Start now logging to logfile
-Start-Transcript -Append -Path "$ctxDir\opennebula-context.log" | Out-Null
-
-## check if we are running powershell(x86) on a 64bit system, if so restart as 64bit
-## initial code: http://cosmonautdreams.com/2013/09/03/Getting-Powershell-to-run-in-64-bit.html
-If ($env:PROCESSOR_ARCHITEW6432 -eq "AMD64") {
-    # This is only set in a x86 Powershell running on a 64bit Windows
-    Write-Output "- Detected 32bit architecture"
-
-    Write-Output "Restarting into a 64bit powershell"
-
-    # Stop-Transcript here new - unlock logfile
-    Stop-Transcript | Out-Null
-
-    If ($myInvocation.Line) {
-        &"$env:WINDIR\sysnative\windowspowershell\v1.0\powershell.exe" -NonInteractive -NoProfile $myInvocation.Line
-    } Else {
-        &"$env:WINDIR\sysnative\windowspowershell\v1.0\powershell.exe" -NonInteractive -NoProfile -file "$($myInvocation.InvocationName)" $args
-    }
-
-    exit $lastexitcode
-}
-
-Write-Output "Running Script: $($MyInvocation.InvocationName)"
-Get-Date
-Write-Output ""
-
-Set-ExecutionPolicy unrestricted -force # not needed if already done once on the VM
-[string]$computerName = "$env:computername"
-[string]$ConnectionString = "WinNT://$computerName"
-
-function getContext($file) {
-    Write-Host "Loading Context File"
+function getContext($file)
+{
+    logmsg "* Loading Context File"
     $context = @{}
     switch -regex -file $file {
         "^([^=]+)='(.+?)'$" {
@@ -78,17 +47,135 @@ function getContext($file) {
     return $context
 }
 
-function envContext($context) {
+function envContext($context)
+{
     ForEach ($h in $context.GetEnumerator()) {
         $name = "Env:"+$h.Name
         Set-Item $name $h.Value
     }
 }
 
-function addLocalUser($context) {
+function contextChanged($file, $last_checksum)
+{
+    $new_checksum = Get-FileHash -Algorithm SHA256 $file
+    $ret = $last_checksum.Hash -ne $new_checksum.Hash
+    return $ret
+}
+
+function waitForContext($checksum)
+{
+    # This object will be set and returned at the end
+    $contextPaths = New-Object PsObject -Property @{
+        contextScriptPath=$null ;
+        contextPath=$null ;
+        contextDrive=$null ;
+        contextLetter=$null
+        }
+
+    # How long to wait before another poll (in seconds)
+    $sleep = 30
+
+    logmsg "* Starting a wait-loop with the interval of $sleep seconds..."
+
+    Write-Host "`r`n" -NoNewline
+    Write-Host "***********************`r`n" -NoNewline
+    Write-Host "*** WAIT-LOOP START ***`r`n" -NoNewline
+    Write-Host "***********************`r`n" -NoNewline
+    Write-Host "`r`n" -NoNewline
+
+    do {
+        logmsg "* Detecting contextualization data"
+        logmsg "- Looking for CONTEXT ISO"
+
+        # Reset the contextPath
+        $contextPath = ""
+
+        # Get all drives and select only the one that has "CONTEXT" as a label
+        $contextDrive = Get-WMIObject Win32_Volume | ? { $_.Label -eq "CONTEXT" }
+
+        if ($contextDrive) {
+            logmsg "  ... Found"
+
+            # At this point we can obtain the letter of the contextDrive
+            $contextLetter = $contextDrive.Name
+            $contextPath = $contextLetter + "context.sh"
+        } else {
+            logmsg "  ... Not found"
+            logmsg "- Looking for VMware tools"
+
+            # Try the VMware API
+            foreach ($pf in ${env:ProgramFiles}, ${env:ProgramFiles(x86)}, ${env:ProgramW6432}) {
+                $vmtoolsd = "${pf}\VMware\VMware Tools\vmtoolsd.exe"
+                if (Test-Path $vmtoolsd) {
+                    logmsg "  ... Found in ${vmtoolsd}"
+                    break
+                } else {
+                    logmsg "  ... Not found in ${vmtoolsd}"
+                }
+            }
+
+            $vmwareContext = ""
+            if (Test-Path $vmtoolsd) {
+                $vmwareContext = & $vmtoolsd --cmd "info-get guestinfo.opennebula.context" | Out-String
+            }
+
+            if ("$vmwareContext" -ne "") {
+                [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($vmwareContext)) | Out-File "$ctxDir\context.sh" "UTF8"
+                $contextLetter = $env:SystemDrive + "\"
+                $contextPath = "$ctxDir\context.sh"
+            }
+
+        }
+
+        # Terminate the wait-loop only when context.sh is found and changed
+        if ([string]$contextPath -ne "" -and (Test-Path $contextPath)) {
+            logmsg "- Found contextualization data: $contextPath"
+
+            # Context must differ
+            if (contextChanged $contextPath $checksum) {
+                Break
+            } else {
+                logmsg "- Contextualization data were not changed"
+            }
+        } else {
+            logmsg "- No contextualization data found"
+        }
+
+        logmsg "  ... Sleep for $($sleep)s ..."
+        Write-Host "`r`n" -NoNewline
+        Start-Sleep -Seconds $sleep
+    } while ($true)
+
+    Write-Host "`r`n" -NoNewline
+    Write-Host "***********************`r`n" -NoNewline
+    Write-Host "***  WAIT-LOOP END  ***`r`n" -NoNewline
+    Write-Host "***********************`r`n" -NoNewline
+    Write-Host "`r`n" -NoNewline
+
+    # make a copy of the context.sh in the case another event would happen and
+    # trigger a new context.sh while still working on the previous one which
+    # would result in a mismatched checksum...
+    $contextScriptPath = "$ctxDir\.opennebula-context.sh"
+    Copy-Item -Path $contextPath -Destination $contextScriptPath -Force
+
+    $contextPaths.contextScriptPath = [string]$contextScriptPath
+    $contextPaths.contextPath = [string]$contextPath
+    $contextPaths.contextDrive = $contextDrive
+    $contextPaths.contextLetter = [string]$contextLetter
+
+    return $contextPaths
+}
+
+function addLocalUser($context)
+{
     # Create new user
     $username =  $context["USERNAME"]
     $password =  $context["PASSWORD"]
+    $password64 = $context["PASSWORD_BASE64"]
+
+    If ($password64) {
+        $password = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($password64))
+    }
 
     if ($username -Or $password) {
 
@@ -100,25 +187,25 @@ function addLocalUser($context) {
                          select -ExpandProperty Name)
         }
 
-        Write-Output "Creating Account for $username"
+        logmsg "* Creating Account for $username"
 
         $ADSI = [adsi]$ConnectionString
 
         if(!([ADSI]::Exists("WinNT://$computerName/$username"))) {
             # User does not exist, Create the User
-            Write-Output "- Creating account"
+            logmsg "- Creating account"
             $user = $ADSI.Create("user",$username)
             $user.setPassword($password)
             $user.SetInfo()
         } else {
             # User exists, Set Password
-            Write-Output "- Setting Password"
+            logmsg "- Setting Password"
             $admin = [ADSI]"WinNT://$env:computername/$username"
             $admin.psbase.invoke("SetPassword", $password)
         }
 
         # Set Password to Never Expire
-        Write-Output "- Setting password to never expire"
+        logmsg "- Setting password to never expire"
         $admin = [ADSI]"WinNT://$env:computername/$username"
         $admin.UserFlags.value = $admin.UserFlags.value -bor 0x10000
         $admin.CommitChanges()
@@ -151,17 +238,18 @@ function addLocalUser($context) {
                     if([ADSI]::Exists("WinNT://$computerName/$username")) {
 
                         # Add the user
-                        Write-Output "- Adding to $grp"
+                        logmsg "- Adding to $grp"
                         $group.Add("WinNT://$computerName/$username")
                     }
                 }
             }
         }
     }
-    Write-Output ""
+    Write-Host "`r`n" -NoNewline
 }
 
-function configureNetwork($context) {
+function configureNetwork($context)
+{
 
     # Get the NIC in the Context
     $nicIds = ($context.Keys | Where {$_ -match '^ETH\d+_IP6?$'} | ForEach-Object {$_ -replace '(^ETH|_IP$|_IP6$)',''} | Sort-Object -Unique)
@@ -230,27 +318,27 @@ function configureNetwork($context) {
         } while (!$nic -and $retry)
 
         If (!$nic) {
-            Write-Output ("Configuring Network Settings: " + $mac)
-            Write-Output ("  ... Failed: Interface with MAC not found")
+            logmsg ("* Configuring Network Settings: " + $mac)
+            logmsg ("  ... Failed: Interface with MAC not found")
             Continue
         }
 
-        Write-Output ("Configuring Network Settings: " + $nic.Description.ToString())
+        logmsg ("* Configuring Network Settings: " + $nic.Description.ToString())
 
         # Release the DHCP lease, will fail if adapter not DHCP Configured
-        Write-Output "- Release DHCP Lease"
+        logmsg "- Release DHCP Lease"
         $ret = $nic.ReleaseDHCPLease()
         If ($ret.ReturnValue) {
-            Write-Output ("  ... Failed: " + $ret.ReturnValue.ToString())
+            logmsg ("  ... Failed: " + $ret.ReturnValue.ToString())
         } Else {
-            Write-Output "  ... Success"
+            logmsg "  ... Success"
         }
 
         if ($ip) {
             # set static IP address and retry for few times if there was a problem
             # with acquiring write lock (2147786788) for network configuration
             # https://msdn.microsoft.com/en-us/library/aa390383(v=vs.85).aspx
-            Write-Output "- Set Static IP"
+            logmsg "- Set Static IP"
             $retry = 10
             do {
                 $retry--
@@ -258,20 +346,20 @@ function configureNetwork($context) {
                 $ret = $nic.EnableStatic($ip , $netmask)
             } while ($ret.ReturnValue -eq 2147786788 -and $retry);
             If ($ret.ReturnValue) {
-                Write-Output ("  ... Failed: " + $ret.ReturnValue.ToString())
+                logmsg ("  ... Failed: " + $ret.ReturnValue.ToString())
             } Else {
-                Write-Output "  ... Success"
+                logmsg "  ... Success"
             }
 
             # Set IPv4 MTU
             if ($mtu) {
-                Write-Output "- Set MTU: ${mtu}"
+                logmsg "- Set MTU: ${mtu}"
                 netsh interface ipv4 set interface $nic.InterfaceIndex mtu=$mtu
 
                 If ($?) {
-                    Write-Output "  ... Success"
+                    logmsg "  ... Success"
                 } Else {
-                    Write-Output "  ... Failed"
+                    logmsg "  ... Failed"
                 }
             }
 
@@ -279,16 +367,16 @@ function configureNetwork($context) {
 
                 # Set the Gateway
                 if ($metric) {
-                    Write-Output "- Set Gateway with metric"
+                    logmsg "- Set Gateway with metric"
                     $ret = $nic.SetGateways($gateway, $metric)
                 } Else {
-                    Write-Output "- Set Gateway"
+                    logmsg "- Set Gateway"
                     $ret = $nic.SetGateways($gateway)
                 }
                 If ($ret.ReturnValue) {
-                    Write-Output ("  ... Failed: " + $ret.ReturnValue.ToString())
+                    logmsg ("  ... Failed: " + $ret.ReturnValue.ToString())
                 } Else {
-                    Write-Output "  ... Success"
+                    logmsg "  ... Success"
                 }
 
                 If ($dns) {
@@ -297,21 +385,21 @@ function configureNetwork($context) {
                     $dnsServers = $dns -split " "
 
                     # DNS Server Search Order
-                    Write-Output "- Set DNS Server Search Order"
+                    logmsg "- Set DNS Server Search Order"
                     $ret = $nic.SetDNSServerSearchOrder($dnsServers)
                     If ($ret.ReturnValue) {
-                        Write-Output ("  ... Failed: " + $ret.ReturnValue.ToString())
+                        logmsg ("  ... Failed: " + $ret.ReturnValue.ToString())
                     } Else {
-                        Write-Output "  ... Success"
+                        logmsg "  ... Success"
                     }
 
                     # Set Dynamic DNS Registration
-                    Write-Output "- Set Dynamic DNS Registration"
+                    logmsg "- Set Dynamic DNS Registration"
                     $ret = $nic.SetDynamicDNSRegistration("TRUE")
                     If ($ret.ReturnValue) {
-                        Write-Output ("  ... Failed: " + $ret.ReturnValue.ToString())
+                        logmsg ("  ... Failed: " + $ret.ReturnValue.ToString())
                     } Else {
-                        Write-Output "  ... Success"
+                        logmsg "  ... Success"
                     }
 
                     # WINS Addresses
@@ -324,21 +412,21 @@ function configureNetwork($context) {
                     $dnsSuffixes = $dnsSuffix -split " "
 
                     # Set DNS Suffix Search Order
-                    Write-Output "- Set DNS Suffix Search Order"
+                    logmsg "- Set DNS Suffix Search Order"
                     $ret = ([WMIClass]"Win32_NetworkAdapterConfiguration").SetDNSSuffixSearchOrder(($dnsSuffixes))
                     If ($ret.ReturnValue) {
-                        Write-Output ("  ... Failed: " + $ret.ReturnValue.ToString())
+                        logmsg ("  ... Failed: " + $ret.ReturnValue.ToString())
                     } Else {
-                        Write-Output "  ... Success"
+                        logmsg "  ... Success"
                     }
 
                     # Set Primary DNS Domain
-                    Write-Output "- Set Primary DNS Domain"
+                    logmsg "- Set Primary DNS Domain"
                     $ret = $nic.SetDNSDomain($dnsSuffixes[0])
                     If ($ret.ReturnValue) {
-                        Write-Output ("  ... Failed: " + $ret.ReturnValue.ToString())
+                        logmsg ("  ... Failed: " + $ret.ReturnValue.ToString())
                     } Else {
-                        Write-Output "  ... Success"
+                        logmsg "  ... Success"
                     }
                 }
             }
@@ -352,18 +440,18 @@ function configureNetwork($context) {
 
 
             # Disable router discovery
-            Write-Output "- Disable IPv6 router discovery"
+            logmsg "- Disable IPv6 router discovery"
             netsh interface ipv6 set interface $na.NetConnectionId `
                 advertise=disabled routerdiscover=disabled | Out-Null
 
             If ($?) {
-                Write-Output "  ... Success"
+                logmsg "  ... Success"
             } Else {
-                Write-Output "  ... Failed"
+                logmsg "  ... Failed"
             }
 
             # Remove old IPv6 addresses
-            Write-Output "- Removing old IPv6 addresses"
+            logmsg "- Removing old IPv6 addresses"
             if (Get-Command Remove-NetIPAddress -errorAction SilentlyContinue) {
                 # Windows 8.1 and Server 2012 R2 and up
                 # we want to remove everything except the link-local address
@@ -373,58 +461,58 @@ function configureNetwork($context) {
                     -errorAction SilentlyContinue
 
                 If ($?) {
-                    Write-Output "  ... Success"
+                    logmsg "  ... Success"
                 } Else {
-                    Write-Output "  ... Nothing to do"
+                    logmsg "  ... Nothing to do"
                 }
             } Else {
-                Write-Output "  ... Not implemented"
+                logmsg "  ... Not implemented"
             }
 
             # Set IPv6 Address
-            Write-Output "- Set IPv6 Address"
+            logmsg "- Set IPv6 Address"
             netsh interface ipv6 add address $na.NetConnectionId $ip6/$ip6Prefix
             If ($? -And $ip6ULA) {
                 netsh interface ipv6 add address $na.NetConnectionId $ip6ULA/64
             }
 
             If ($?) {
-                Write-Output "  ... Success"
+                logmsg "  ... Success"
             } Else {
-                Write-Output "  ... Failed"
+                logmsg "  ... Failed"
             }
 
             # Set IPv6 Gateway
             if ($gw6) {
-                Write-Output "- Set IPv6 Gateway"
+                logmsg "- Set IPv6 Gateway"
                 netsh interface ipv6 add route ::/0 $na.NetConnectionId $gw6
 
                 If ($?) {
-                    Write-Output "  ... Success"
+                    logmsg "  ... Success"
                 } Else {
-                    Write-Output "  ... Failed"
+                    logmsg "  ... Failed"
                 }
             }
 
             # Set IPv6 MTU
             if ($mtu) {
-                Write-Output "- Set IPv6 MTU: ${mtu}"
+                logmsg "- Set IPv6 MTU: ${mtu}"
                 netsh interface ipv6 set interface $nic.InterfaceIndex mtu=$mtu
 
                 If ($?) {
-                    Write-Output "  ... Success"
+                    logmsg "  ... Success"
                 } Else {
-                    Write-Output "  ... Failed"
+                    logmsg "  ... Failed"
                 }
             }
 
             # Remove old IPv6 DNS Servers
-            Write-Output "- Removing old IPv6 DNS Servers"
+            logmsg "- Removing old IPv6 DNS Servers"
             netsh interface ipv6 set dnsservers $na.NetConnectionId source=static address=
 
             If ($dns6) {
                 # Set IPv6 DNS Servers
-                Write-Output "- Set IPv6 DNS Servers"
+                logmsg "- Set IPv6 DNS Servers"
                 $dns6Servers = $dns6 -split " "
                 foreach ($dns6Server in $dns6Servers) {
                     netsh interface ipv6 add dnsserver $na.NetConnectionId address=$dns6Server
@@ -460,27 +548,27 @@ function configureNetwork($context) {
             }
 
             if ($aliasIp -and !$detach) {
-                Write-Output "- Set Additional Static IP (${aliasPrefix})"
+                logmsg "- Set Additional Static IP (${aliasPrefix})"
                 netsh interface ipv4 add address $nic.InterfaceIndex $aliasIp $aliasNetmask
 
                 If ($?) {
-                    Write-Output "  ... Success"
+                    logmsg "  ... Success"
                 } Else {
-                    Write-Output "  ... Failed"
+                    logmsg "  ... Failed"
                 }
             }
 
             if ($aliasIp6 -and !$detach) {
-                Write-Output "- Set Additional IPv6 Address (${aliasPrefix})"
+                logmsg "- Set Additional IPv6 Address (${aliasPrefix})"
                 netsh interface ipv6 add address $nic.InterfaceIndex $aliasIp6/$aliasIp6Prefix
                 If ($? -And $aliasIp6ULA) {
                     netsh interface ipv6 add address $nic.InterfaceIndex $aliasIp6ULA/64
                 }
 
                 If ($?) {
-                    Write-Output "  ... Success"
+                    logmsg "  ... Success"
                 } Else {
-                    Write-Output "  ... Failed"
+                    logmsg "  ... Failed"
                 }
             }
         }
@@ -490,27 +578,28 @@ function configureNetwork($context) {
         }
     }
 
-    Write-Output ""
+    Write-Host "`r`n" -NoNewline
 }
 
-function setTimeZone($context) {
+function setTimeZone($context)
+{
     $timezone = $context['TIMEZONE']
 
     If ($timezone) {
-        Write-Output "Configuring time zone '${timezone}'"
+        logmsg "* Configuring time zone '${timezone}'"
 
         tzutil /s "${timezone}"
 
         If ($?) {
-            Write-Output '  ... Success'
+            logmsg '  ... Success'
         } Else {
-            Write-Output '  ... Failed'
+            logmsg '  ... Failed'
         }
     }
 }
 
-function renameComputer($context) {
-
+function renameComputer($context)
+{
     # Initialize Variables
     $current_hostname = hostname
     $context_hostname = $context["SET_HOSTNAME"]
@@ -525,10 +614,10 @@ function renameComputer($context) {
             # in question is the first one with a set default gateway
             # (as is done by get_first_ip in addon-context-linux)
 
-            Write-Output "Requested change of Hostname via reverse DNS lookup (DNS_HOSTNAME=YES)"
+            logmsg "* Requested change of Hostname via reverse DNS lookup (DNS_HOSTNAME=YES)"
             $first_ip = (Get-WmiObject -Class Win32_NetworkAdapterConfiguration | where {$_.DefaultIPGateway -ne $null}).IPAddress | select-object -first 1
             $context_hostname = [System.Net.Dns]::GetHostbyAddress($first_ip).HostName
-            Write-Output "Resolved Hostname is: $context_hostname"
+            logmsg "- Resolved Hostname is: $context_hostname"
         } Else {
 
             # no SET_HOSTNAME nor DNS_HOSTNAME - skip setting hostname
@@ -541,7 +630,7 @@ function renameComputer($context) {
     $context_domain    = $splitted_hostname[1..$splitted_hostname.length] -join '.'
 
     If ($context_domain) {
-        Write-Output "Changing Domain to $context_domain"
+        logmsg "* Changing Domain to $context_domain"
 
         $networkConfig = Get-WmiObject Win32_NetworkAdapterConfiguration -filter "ipenabled = 'true'"
         $ret = $networkConfig.SetDnsDomain($context_domain)
@@ -549,17 +638,18 @@ function renameComputer($context) {
         If ($ret.ReturnValue) {
 
             # Returned Non Zero, Failed, No restart
-            Write-Output ("  ... Failed: " + $ret.ReturnValue.ToString())
+            logmsg ("  ... Failed: " + $ret.ReturnValue.ToString())
         } Else {
 
             # Returned Zero, Success
-            Write-Output " ... Success"
+            logmsg "  ... Success"
         }
     }
 
     # Check for the .opennebula-renamed file
     $logged_hostname  = ""
     If (Test-Path "$ctxDir\.opennebula-renamed") {
+        logmsg "- Using the JSON file: $ctxDir\.opennebula-renamed"
 
         # Grab the JSON content
         $json = Get-Content -Path "$ctxDir\.opennebula-renamed" `
@@ -572,8 +662,8 @@ function renameComputer($context) {
         }
         # Invalid JSON
         catch [System.ArgumentException] {
-            Write-Output "Invalid JSON:"
-            Write-Output $json.ToString()
+            logmsg " [!] Invalid JSON:"
+            Write-Host $json.ToString()
         }
     } Else {
 
@@ -587,14 +677,14 @@ function renameComputer($context) {
         # avoid rename->reboot loop - if we detect that rename attempt was done
         # but failed then we drop log message about it and finish...
 
-        Write-Output "Computer Rename Attempted but failed:"
-        Write-Output "- Current: $current_hostname"
-        Write-Output "- Context: $context_hostname"
+        logmsg "* Computer Rename Attempted but failed:"
+        logmsg "- Current: $current_hostname"
+        logmsg "- Context: $context_hostname"
     } ElseIf ($context_hostname -ne $current_hostname) {
 
         # the current_name does not match the context_name, rename the computer
 
-        Write-Output "Changing Hostname to $context_hostname"
+        logmsg "* Changing Hostname to $context_hostname"
         # Load the ComputerSystem Object
         $ComputerInfo = Get-WmiObject -Class Win32_ComputerSystem
 
@@ -609,19 +699,19 @@ function renameComputer($context) {
         If ($ret.ReturnValue) {
 
             # Returned Non Zero, Failed, No restart
-            Write-Output ("  ... Failed: " + $ret.ReturnValue.ToString())
-            Write-Output "      Check the computername."
-            Write-Output "Possible Issues: The name cannot include control" `
-                         "characters, leading or trailing spaces, or any of" `
-                         "the following characters: `" / \ [ ] : | < > + = ; , ?"
+            logmsg ("  ... Failed: " + $ret.ReturnValue.ToString())
+            Write-Host "      Check the computername. "
+            Write-Host "Possible Issues: The name cannot include control " `
+                       "characters, leading or trailing spaces, or any of " `
+                       "the following characters: `" / \ [ ] : | < > + = ; , ?"
 
         } Else {
 
             # Returned Zero, Success
-            Write-Output "... Success"
+            logmsg "  ... Success"
 
             # Restart the Computer
-            Write-Output "... Rebooting"
+            logmsg "  ... Rebooting"
             Restart-Computer -Force
 
             # Exit here so the script doesn't continue to run
@@ -630,53 +720,53 @@ function renameComputer($context) {
     } Else {
 
         # Hostname is set and correct
-        Write-Output "Computer Name already set: $context_hostname"
+        logmsg "* Computer Name already set: $context_hostname"
     }
 
-    Write-Output ""
+    Write-Host "`r`n" -NoNewline
 }
 
 function enableRemoteDesktop()
 {
-    Write-Output "Enabling Remote Desktop"
+    logmsg "* Enabling Remote Desktop"
     # Windows 7 only - add firewall exception for RDP
-    Write-Output "- Enable Remote Desktop Rule Group"
+    logmsg "- Enable Remote Desktop Rule Group"
     netsh advfirewall Firewall set rule group="Remote Desktop" new enable=yes
 
     # Enable RDP
-    Write-Output "- Enable Allow Terminal Services Connections"
+    logmsg "- Enable Allow Terminal Services Connections"
     $ret = (Get-WmiObject -Class "Win32_TerminalServiceSetting" -Namespace root\cimv2\terminalservices).SetAllowTsConnections(1)
     If ($ret.ReturnValue) {
-        Write-Output ("  ... Failed: " + $ret.ReturnValue.ToString())
+        logmsg ("  ... Failed: " + $ret.ReturnValue.ToString())
     } Else {
-        Write-Output "  ... Success"
+        logmsg "  ... Success"
     }
-    Write-Output ""
+    Write-Host "`r`n" -NoNewline
 }
 
 function enablePing()
 {
-    Write-Output "Enabling Ping"
+    logmsg "* Enabling Ping"
     #Create firewall manager object
     $fwm=new-object -com hnetcfg.fwmgr
 
     # Get current profile
     $pro=$fwm.LocalPolicy.CurrentProfile
 
-    Write-Output "- Enable Allow Inbound Echo Requests"
+    logmsg "- Enable Allow Inbound Echo Requests"
     $ret = $pro.IcmpSettings.AllowInboundEchoRequest=$true
     If ($ret) {
-        Write-Output "  ... Success"
+        logmsg "  ... Success"
     } Else {
-        Write-Output "  ... Failed"
+        logmsg "  ... Failed"
     }
 
-    Write-Output ""
+    Write-Host "`r`n" -NoNewline
 }
 
 function doPing($ip, $retries=20)
 {
-    Write-Output "- Ping Interface IP $ip"
+    logmsg "- Ping Interface IP $ip"
 
     $ping = $false
     $retry = 0
@@ -687,15 +777,15 @@ function doPing($ip, $retries=20)
     } while (!$ping -and ($retry -lt $retries))
 
     If ($ping) {
-        Write-Output "  ... Success ($retry tries)"
+        logmsg "  ... Success ($retry tries)"
     } Else {
-        Write-Output "  ... Failed ($retry tries)"
+        logmsg "  ... Failed ($retry tries)"
     }
 }
 
 function runScripts($context, $contextLetter)
 {
-    Write-Output "Running Scripts"
+    logmsg "* Running Scripts"
 
     # Get list of scripts to run, " " delimited
     $initscripts = $context["INIT_SCRIPTS"]
@@ -705,11 +795,15 @@ function runScripts($context, $contextLetter)
         # Parse each script and run it
         ForEach ($script in $initscripts.split(" ")) {
 
-            $script = $contextLetter + $script
-            If (Test-Path $script) {
-                Write-Output "- $script"
+            # If it is not an absolute path then try to assemble it
+            if (![System.IO.Path]::IsPathRooted($script)) {
+                $script = $contextLetter + $script
+            }
+
+            if (Test-Path $script) {
+                logmsg "- $script"
                 envContext($context)
-                & $script
+                pswrapper "$script"
             }
 
         }
@@ -719,23 +813,23 @@ function runScripts($context, $contextLetter)
     $startScript   = $context["START_SCRIPT"]
     $startScript64 = $context["START_SCRIPT_BASE64"]
 
-    If ($startScript64) {
+    if ($startScript64) {
         $startScript = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($startScript64))
     }
 
-    If ($startScript) {
+    if ($startScript) {
 
         # Save the script as .opennebula-startscript.ps1
         $startScriptPS = "$ctxDir\.opennebula-startscript.ps1"
         $startScript | Out-File $startScriptPS "UTF8"
 
         # Launch the Script
-        Write-Output "- $startScriptPS"
+        logmsg "- $startScriptPS"
         envContext($context)
-        & $startScriptPS
-
+        pswrapper "$startScriptPS"
+        removeFile "$startScriptPS"
     }
-    Write-Output ""
+    Write-Host "`r`n" -NoNewline
 }
 
 function extendPartition($disk, $part)
@@ -745,7 +839,7 @@ function extendPartition($disk, $part)
 
 function extendPartitions()
 {
-    Write-Output "- Extend partitions"
+    logmsg "* Extend partitions"
 
     "rescan" | diskpart
 
@@ -768,25 +862,25 @@ function reportReady()
     $token           = $context['ONEGATE_TOKEN']
 
     if ($reportReady -and $reportReady.ToUpper() -eq 'YES') {
-        Write-Output 'Report Ready to OneGate'
+        logmsg '* Report Ready to OneGate'
 
         if (!$oneGateEndpoint) {
-            Write-Output ' ... Failed: ONEGATE_ENDPOINT not set'
+            logmsg '  ... Failed: ONEGATE_ENDPOINT not set'
             return
         }
 
         if (!$vmId) {
-            Write-Output ' ... Failed: VMID not set'
+            logmsg '  ... Failed: VMID not set'
             return
         }
 
         if (!$token) {
-            Write-Output " ... Token not set. Try file"
+            logmsg "  ... Token not set. Try file"
             $tokenPath = $contextLetter + 'token.txt'
             if (Test-Path $tokenPath) {
                 $token = Get-Content $tokenPath
             } else {
-                Write-Output " ... Failed: Token file not found"
+                logmsg "  ... Failed: Token file not found"
                 return
             }
         }
@@ -806,7 +900,7 @@ function reportReady()
 
             if ($oneGateEndpoint -ilike "https://*") {
                 #For reporting on HTTPS OneGateEndpoint
-                Write-Output "... Use HTTPS for OneGateEndpoint report: $oneGateEndpoint"
+                logmsg "  ... Use HTTPS for OneGateEndpoint report: $oneGateEndpoint"
                 $AllProtocols = [System.Net.SecurityProtocolType]'Ssl3,Tls,Tls11,Tls12'
                 [System.Net.ServicePointManager]::SecurityProtocol = $AllProtocols
                 [System.Net.ServicePointManager]::Expect100Continue = $false
@@ -820,17 +914,15 @@ function reportReady()
 
             $response = $webRequest.getResponse()
             if ($response.StatusCode -eq 'OK') {
-                Write-Output ' ... Success'
+                logmsg '  ... Success'
             } else {
-                Write-Output ' ... Failed'
-                Write-Output $response.StatusCode
+                logmsg "  ... Failed: $($response.StatusCode)"
             }
         }
         catch {
             $errorMessage = $_.Exception.Message
 
-            Write-Output ' ... Failed'
-            Write-Output $errorMessage
+            logmsg "  ... Failed:`r`n$errorMessage"
         }
     }
 }
@@ -844,7 +936,7 @@ function ejectContextCD($cdrom_drive)
     $eject_cdrom = $context['EJECT_CDROM']
 
     if ($eject_cdrom -ne $null -and $eject_cdrom.ToUpper() -eq 'YES') {
-        Write-Output 'Ejecting context CD'
+        logmsg '* Ejecting context CD'
         try {
             $disk_master = New-Object -ComObject IMAPI2.MsftDiscMaster2
             for ($cdrom_id = 0; $cdrom_id -lt $disk_master.Count; $cdrom_id++) {
@@ -856,16 +948,35 @@ function ejectContextCD($cdrom_drive)
                 }
             }
         } catch {
-            Write-Error "Failed to eject the CD: $_"
+            logmsg "  ... Failed to eject the CD: $_"
         }
     }
 }
 
-function removeContextFile($context_file)
+function removeFile($file)
 {
-    if (Test-Path $context_file) {
-        Write-Output "Removing the 'context.sh' file"
-        Remove-Item $context_file
+    if ($file -ne "" -and (Test-Path $file)) {
+        logmsg "* Removing the file: ${file}"
+        Remove-Item $file -Force
+    }
+}
+
+function pswrapper($path)
+{
+    # source:
+    #   - http://cosmonautdreams.com/2013/09/03/Getting-Powershell-to-run-in-64-bit.html
+    #   - https://ss64.com/nt/syntax-64bit.html
+    If ($env:PROCESSOR_ARCHITEW6432 -eq "AMD64") {
+        # This is only set in a x86 Powershell running on a 64bit Windows
+
+        $realpath = [string]$(Resolve-Path "$path")
+
+        # Run 64bit powershell as a subprocess and there execute the command
+        #
+        # NOTE: virtual subdir 'sysnative' exists only when running 32bit binary under 64bit system
+        & "$env:WINDIR\sysnative\windowspowershell\v1.0\powershell.exe" -NonInteractive -NoProfile -Command "$realpath"
+    } Else {
+        & "$path"
     }
 }
 
@@ -873,59 +984,51 @@ function removeContextFile($context_file)
 # Main
 ################################################################################
 
+# global variable pointing to the private .contextualization directory
+$global:ctxDir="$env:SystemDrive\.onecontext"
+
+# Check, if above defined context directory exists
+If ( !(Test-Path "$ctxDir") ) {
+  mkdir "$ctxDir"
+}
+
+# Move old logfile away - so we have a current log containing the output of the last boot
+If ( Test-Path "$ctxDir\opennebula-context.log" ) {
+  mv "$ctxDir\opennebula-context.log" "$ctxDir\opennebula-context-old.log"
+}
+
+# Start now logging to logfile
+Start-Transcript -Append -Path "$ctxDir\opennebula-context.log" | Out-Null
+
+logmsg "* Running Script: $($MyInvocation.MyCommand.Path)"
+
+Set-ExecutionPolicy unrestricted -force # not needed if already done once on the VM
+[string]$computerName = "$env:computername"
+[string]$ConnectionString = "WinNT://$computerName"
+
 # Check the working WMI
 if (-Not (Get-WMIObject -ErrorAction SilentlyContinue Win32_Volume)) {
-    Write-Output "WMI not ready, exiting"
+    logmsg "- WMI not ready, exiting"
     Stop-Transcript | Out-Null
     exit 1
 }
 
-Write-Output "Detecting contextualization data"
-Write-Output "- Looking for CONTEXT ISO"
+Write-Host "`r`n" -NoNewline
+Write-Host "*********************************`r`n" -NoNewline
+Write-Host "*** ENTERING THE SERVICE LOOP ***`r`n" -NoNewline
+Write-Host "*********************************`r`n" -NoNewline
+Write-Host "`r`n" -NoNewline
 
-# Get all drives and select only the one that has "CONTEXT" as a label
-$contextDrive = Get-WMIObject Win32_Volume | ? { $_.Label -eq "CONTEXT" }
+# infinite loop
+$checksum = ""
+do {
+    # Stay in this wait-loop until context.sh emerges and its path is stored
+    $contextPaths = waitForContext($checksum)
 
-if ($contextDrive) {
-    Write-Output "  ... Found"
+    # Parse context file
+    $context = getContext $contextPaths.contextScriptPath
 
-    # At this point we can obtain the letter of the contextDrive
-    $contextLetter     = $contextDrive.Name
-    $contextScriptPath = $contextLetter + "context.sh"
-} else {
-    Write-Output "  ... Not found"
-    Write-Output "- Looking for VMware tools"
-
-    # Try the VMware API
-    foreach ($pf in ${env:ProgramFiles}, ${env:ProgramFiles(x86)}, ${env:ProgramW6432}) {
-        $vmtoolsd = "${pf}\VMware\VMware Tools\vmtoolsd.exe"
-        if (Test-Path $vmtoolsd) {
-            Write-Output "  ... Found in ${vmtoolsd}"
-            break
-        } else {
-            Write-Output "  ... Not found in ${vmtoolsd}"
-        }
-    }
-
-    $vmwareContext = ""
-    if (Test-Path $vmtoolsd) {
-        $vmwareContext = & $vmtoolsd --cmd "info-get guestinfo.opennebula.context" | Out-String
-    }
-
-    if ("$vmwareContext" -eq "") {
-        Write-Host "No contextualization data found"
-        Stop-Transcript | Out-Null
-        exit 1
-    }
-
-    [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($vmwareContext)) | Out-File "$ctxDir\context.sh" "UTF8"
-    $contextScriptPath = "$ctxDir\context.sh"
-}
-
-# Execute script
-if(Test-Path $contextScriptPath) {
-    $context = getContext $contextScriptPath
-
+    # Execute the contextualization actions
     extendPartitions
     setTimeZone $context
     addLocalUser $context
@@ -933,17 +1036,27 @@ if(Test-Path $contextScriptPath) {
     enablePing
     configureNetwork $context
     renameComputer $context
-    runScripts $context $contextLetter
+    runScripts $context $contextPaths.contextLetter
     reportReady
-}
 
-# Cleanup at the end
-if ($contextDrive) {
-    # Eject CD with 'context.sh' if requested
-    ejectContextCD $contextDrive
-} else {
-    # Delete 'context.sh' if not on CD-ROM
-    removeContextFile $contextScriptPath
-}
+    # Save the 'applied' context.sh checksum for the next recontextualization
+    logmsg "* Calculating the checksum of the file: $($contextPaths.contextScriptPath)"
+    $checksum = Get-FileHash -Algorithm SHA256 $contextPaths.contextScriptPath
+    logmsg "  ... $($checksum.Hash)"
+    # and remove the file itself
+    removeFile $contextPaths.contextScriptPath
+
+    # Cleanup at the end
+    if ($contextPaths.contextDrive) {
+        # Eject CD with 'context.sh' if requested
+        ejectContextCD $contextPaths.contextDrive
+    } else {
+        # Delete 'context.sh' if not on CD-ROM
+        removeFile $contextPaths.contextPath
+    }
+
+    Write-Host "`r`n" -NoNewline
+
+} while ($true)
 
 Stop-Transcript | Out-Null

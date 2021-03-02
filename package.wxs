@@ -1,5 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <?define UpgradeCode = "2056bd8a-bf03-11e6-a625-f0def1753696" ?>
+
+<?ifndef var.SrvBinaryName ?>
+  <?define var.SrvBinaryName = "nssm.exe" ?>
+<?endif?>
+
+<?ifndef var.SrvBinaryFile ?>
+  <?define var.SrvBinaryFile = "nssm/win32/nssm.exe" ?>
+<?endif?>
+
+<?ifndef var.SrvBinaryArgs ?>
+  <?define var.SrvBinaryArgs = "" ?>
+<?endif?>
+
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
 
   <Product Name="OpenNebula Contextualization"
@@ -80,11 +93,11 @@
           </Component>
 
           <Component Id="Context" Guid="f5807056-bf0c-11e6-acbe-f0def1753696">
-            <File Id="context" Name="context.ps1" DiskId="1" Source="context.ps1" KeyPath="yes" />
+            <File Id="context" Name="context.ps1" DiskId="1" Source="src/context.ps1" KeyPath="yes" />
           </Component>
 
           <Component Id="Service" Guid="687050a4-c237-11e6-9fe4-54a050d65572">
-            <File Id="rhsrvany" Name="rhsrvany.exe" DiskId="1" Source="rhsrvany.exe" KeyPath="yes" />
+            <File Id="$(var.SrvBinaryName)" Name="$(var.SrvBinaryName)" DiskId="1" Source="$(var.SrvBinaryFile)" KeyPath="yes" />
 
             <ServiceInstall Id="ocInstall" Name="onecontext"
               DisplayName="OpenNebula Contextualization Service"
@@ -92,7 +105,7 @@
               Type="ownProcess"
               Start="auto"
               Account="[SYSTEM]"
-              Arguments="-s onecontext"
+              Arguments="$(var.SrvBinaryArgs)"
               ErrorControl="normal">
 
               <ServiceDependency Id="Winmgmt" />
@@ -107,10 +120,22 @@
               Stop="both"
               Wait="yes" />
 
-            <RegistryKey Root="HKLM" Key="SYSTEM\CurrentControlSet\Services\onecontext\Parameters">
-              <RegistryValue Type="string" Name="CommandLine" Value="&quot;[PSEXE]&quot; -noExit -ExecutionPolicy Unrestricted -file &quot;[#context]&quot;" />
-              <RegistryValue Type="string" Name="PWD" Value="[INSTALLDIR]" />
-            </RegistryKey>
+            <?if $(var.SrvBinaryName) = "nssm.exe" ?>
+              <RegistryKey Root="HKLM" Key="SYSTEM\CurrentControlSet\Services\onecontext\Parameters">
+                <RegistryValue Type="string" Name="Application" Value="[PSEXE]" />
+                <RegistryValue Type="string" Name="AppDirectory" Value="[INSTALLDIR]" />
+                <RegistryValue Type="string" Name="AppParameters" Value="-NonInteractive -NoProfile -ExecutionPolicy Unrestricted -file &quot;[#context]&quot;" />
+              </RegistryKey>
+              <RegistryKey Root="HKLM" Key="SYSTEM\CurrentControlSet\Services\onecontext\Parameters\AppExit">
+                <!-- You can change this to "Restart" but "Ignore" is compatible behavior with srvany and it will prevent unwanted recontextualization -->
+                <RegistryValue Type="string" Value="Ignore" />
+              </RegistryKey>
+            <?else?>
+              <RegistryKey Root="HKLM" Key="SYSTEM\CurrentControlSet\Services\onecontext\Parameters">
+                <RegistryValue Type="string" Name="CommandLine" Value="&quot;[PSEXE]&quot; -NonInteractive -NoProfile -ExecutionPolicy Unrestricted -file &quot;[#context]&quot;" />
+                <RegistryValue Type="string" Name="PWD" Value="[INSTALLDIR]" />
+              </RegistryKey>
+            <?endif?>
           </Component>
         </Directory>
       </Directory>
