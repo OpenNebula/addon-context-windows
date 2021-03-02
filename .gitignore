@@ -1,5 +1,5 @@
 out/
 *.msi
-*.exe
+rhsrvany.exe
 *.un~
 .idea
