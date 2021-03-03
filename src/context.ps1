@@ -855,7 +855,7 @@ function extendPartitions()
     }
 }
 
-function reportReady()
+function reportReady($context, $contextLetter)
 {
     $reportReady     = $context['REPORT_READY']
     $oneGateEndpoint = $context['ONEGATE_ENDPOINT']
@@ -1038,7 +1038,7 @@ do {
     configureNetwork $context
     renameComputer $context
     runScripts $context $contextPaths.contextLetter
-    reportReady
+    reportReady $context $contextPaths.contextLetter
 
     # Save the 'applied' context.sh checksum for the next recontextualization
     logmsg "* Calculating the checksum of the file: $($contextPaths.contextScriptPath)"
