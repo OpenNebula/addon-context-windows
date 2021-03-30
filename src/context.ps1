@@ -123,6 +123,30 @@ function waitForContext($checksum)
                 [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($vmwareContext)) | Out-File "$ctxDir\context.sh" "UTF8"
                 $contextLetter = $env:SystemDrive + "\"
                 $contextPath = "$ctxDir\context.sh"
+
+                # Look for INIT_SCRIPTS
+                $fileId = 0
+                while ($true) {
+                    $vmwareInitFilename = & $vmtoolsd --cmd "info-get guestinfo.opennebula.file.${fileId}" | Select-Object -First 1 | Out-String
+
+                    $vmwareInitFilename = $vmwareInitFilename.Trim()
+
+                    if ($vmwareInitFilename -eq "") {
+                        # no file found
+                        break
+                    }
+
+                    $vmwareInitFileContent64 = & $vmtoolsd --cmd "info-get guestinfo.opennebula.file.${fileId}" | Select-Object -Skip 1 | Out-String
+
+                    # If it is not an absolute path already then compose one
+                    if (![System.IO.Path]::IsPathRooted($vmwareInitFilename)) {
+                        $vmwareInitFilename = $contextLetter + $vmwareInitFilename
+                    }
+
+                    [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($vmwareInitFileContent64)) | Out-File "${vmwareInitFilename}" "UTF8"
+
+                    $fileId++
+                }
             }
 
         }
@@ -792,9 +816,10 @@ function runScripts($context, $contextLetter)
     $initscripts = $context["INIT_SCRIPTS"]
 
     if ($initscripts) {
-
         # Parse each script and run it
         ForEach ($script in $initscripts.split(" ")) {
+
+            $script = $script.Trim()
 
             # If it is not an absolute path then try to assemble it
             if (![System.IO.Path]::IsPathRooted($script)) {
@@ -807,6 +832,15 @@ function runScripts($context, $contextLetter)
                 pswrapper "$script"
             }
 
+        }
+    } else {
+        # Emulate the init.sh fallback behavior from Linux
+        $script = $contextLetter + "init.ps1"
+
+        if (Test-Path $script) {
+            logmsg "- $script"
+            envContext($context)
+            pswrapper "$script"
         }
     }
 
