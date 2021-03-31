@@ -69,7 +69,8 @@ function waitForContext($checksum)
         contextScriptPath=$null ;
         contextPath=$null ;
         contextDrive=$null ;
-        contextLetter=$null
+        contextLetter=$null ;
+        contextInitScriptPath=$null
         }
 
     # How long to wait before another poll (in seconds)
@@ -99,6 +100,7 @@ function waitForContext($checksum)
             # At this point we can obtain the letter of the contextDrive
             $contextLetter = $contextDrive.Name
             $contextPath = $contextLetter + "context.sh"
+            $contextInitScriptPath = $contextLetter
         } else {
             logmsg "  ... Not found"
             logmsg "- Looking for VMware tools"
@@ -123,6 +125,11 @@ function waitForContext($checksum)
                 [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($vmwareContext)) | Out-File "$ctxDir\context.sh" "UTF8"
                 $contextLetter = $env:SystemDrive + "\"
                 $contextPath = "$ctxDir\context.sh"
+                $contextInitScriptPath = "$ctxDir\.init-scripts\"
+
+                if (!(Test-Path "$contextInitScriptPath")) {
+                    mkdir "$contextInitScriptPath"
+                }
 
                 # Look for INIT_SCRIPTS
                 $fileId = 0
@@ -138,10 +145,8 @@ function waitForContext($checksum)
 
                     $vmwareInitFileContent64 = & $vmtoolsd --cmd "info-get guestinfo.opennebula.file.${fileId}" | Select-Object -Skip 1 | Out-String
 
-                    # If it is not an absolute path already then compose one
-                    if (![System.IO.Path]::IsPathRooted($vmwareInitFilename)) {
-                        $vmwareInitFilename = $contextLetter + $vmwareInitFilename
-                    }
+                    # Sanitize the filenames (drop any path from them and instead use our directory)
+                    $vmwareInitFilename = $contextInitScriptPath + [System.IO.Path]::GetFileName("$vmwareInitFilename")
 
                     [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($vmwareInitFileContent64)) | Out-File "${vmwareInitFilename}" "UTF8"
 
@@ -186,6 +191,7 @@ function waitForContext($checksum)
     $contextPaths.contextPath = [string]$contextPath
     $contextPaths.contextDrive = $contextDrive
     $contextPaths.contextLetter = [string]$contextLetter
+    $contextPaths.contextInitScriptPath = [string]$contextInitScriptPath
 
     return $contextPaths
 }
@@ -808,7 +814,7 @@ function doPing($ip, $retries=20)
     }
 }
 
-function runScripts($context, $contextLetter)
+function runScripts($context, $contextPaths)
 {
     logmsg "* Running Scripts"
 
@@ -819,12 +825,8 @@ function runScripts($context, $contextLetter)
         # Parse each script and run it
         ForEach ($script in $initscripts.split(" ")) {
 
-            $script = $script.Trim()
-
-            # If it is not an absolute path then try to assemble it
-            if (![System.IO.Path]::IsPathRooted($script)) {
-                $script = $contextLetter + $script
-            }
+            # Sanitize the filename (drop any path from them and instead use our directory)
+            $script = $contextPaths.contextInitScriptPath + [System.IO.Path]::GetFileName($script.Trim())
 
             if (Test-Path $script) {
                 logmsg "- $script"
@@ -835,7 +837,7 @@ function runScripts($context, $contextLetter)
         }
     } else {
         # Emulate the init.sh fallback behavior from Linux
-        $script = $contextLetter + "init.ps1"
+        $script = $contextPaths.contextInitScriptPath + "init.ps1"
 
         if (Test-Path $script) {
             logmsg "- $script"
@@ -996,6 +998,14 @@ function removeFile($file)
     }
 }
 
+function removeDir($dir)
+{
+    if ($dir -ne "" -and (Test-Path $dir)) {
+        logmsg "* Removing the directory: ${dir}"
+        Remove-Item $dir -Recurse -Force
+    }
+}
+
 function pswrapper($path)
 {
     # source:
@@ -1071,7 +1081,7 @@ do {
     enablePing
     configureNetwork $context
     renameComputer $context
-    runScripts $context $contextPaths.contextLetter
+    runScripts $context $contextPaths
     reportReady $context $contextPaths.contextLetter
 
     # Save the 'applied' context.sh checksum for the next recontextualization
@@ -1088,6 +1098,9 @@ do {
     } else {
         # Delete 'context.sh' if not on CD-ROM
         removeFile $contextPaths.contextPath
+
+        # and downloaded init scripts
+        removeDir $contextPaths.contextInitScriptPath
     }
 
     Write-Host "`r`n" -NoNewline
