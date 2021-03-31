@@ -89,18 +89,18 @@ function waitForContext($checksum)
         logmsg "- Looking for CONTEXT ISO"
 
         # Reset the contextPath
-        $contextPath = ""
+        $contextPaths.contextPath = ""
 
         # Get all drives and select only the one that has "CONTEXT" as a label
-        $contextDrive = Get-WMIObject Win32_Volume | ? { $_.Label -eq "CONTEXT" }
+        $contextPaths.contextDrive = Get-WMIObject Win32_Volume | ? { $_.Label -eq "CONTEXT" }
 
-        if ($contextDrive) {
+        if ($contextPaths.contextDrive) {
             logmsg "  ... Found"
 
             # At this point we can obtain the letter of the contextDrive
-            $contextLetter = $contextDrive.Name
-            $contextPath = $contextLetter + "context.sh"
-            $contextInitScriptPath = $contextLetter
+            $contextPaths.contextLetter = $contextPaths.contextDrive.Name
+            $contextPaths.contextPath = $contextPaths.contextLetter + "context.sh"
+            $contextPaths.contextInitScriptPath = $contextPaths.contextLetter
         } else {
             logmsg "  ... Not found"
             logmsg "- Looking for VMware tools"
@@ -123,12 +123,12 @@ function waitForContext($checksum)
 
             if ("$vmwareContext" -ne "") {
                 [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($vmwareContext)) | Out-File "$ctxDir\context.sh" "UTF8"
-                $contextLetter = $env:SystemDrive + "\"
-                $contextPath = "$ctxDir\context.sh"
-                $contextInitScriptPath = "$ctxDir\.init-scripts\"
+                $contextPaths.contextLetter = $env:SystemDrive + "\"
+                $contextPaths.contextPath = "$ctxDir\context.sh"
+                $contextPaths.contextInitScriptPath = "$ctxDir\.init-scripts\"
 
-                if (!(Test-Path "$contextInitScriptPath")) {
-                    mkdir "$contextInitScriptPath"
+                if (!(Test-Path $contextPaths.contextInitScriptPath)) {
+                    mkdir $contextPaths.contextInitScriptPath
                 }
 
                 # Look for INIT_SCRIPTS
@@ -146,7 +146,7 @@ function waitForContext($checksum)
                     $vmwareInitFileContent64 = & $vmtoolsd --cmd "info-get guestinfo.opennebula.file.${fileId}" | Select-Object -Skip 1 | Out-String
 
                     # Sanitize the filenames (drop any path from them and instead use our directory)
-                    $vmwareInitFilename = $contextInitScriptPath + [System.IO.Path]::GetFileName("$vmwareInitFilename")
+                    $vmwareInitFilename = $contextPaths.contextInitScriptPath + [System.IO.Path]::GetFileName("$vmwareInitFilename")
 
                     [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($vmwareInitFileContent64)) | Out-File "${vmwareInitFilename}" "UTF8"
 
@@ -157,11 +157,11 @@ function waitForContext($checksum)
         }
 
         # Terminate the wait-loop only when context.sh is found and changed
-        if ([string]$contextPath -ne "" -and (Test-Path $contextPath)) {
-            logmsg "- Found contextualization data: $contextPath"
+        if ([string]$contextPaths.contextPath -ne "" -and (Test-Path $contextPaths.contextPath)) {
+            logmsg "- Found contextualization data: $($contextPaths.contextPath)"
 
             # Context must differ
-            if (contextChanged $contextPath $checksum) {
+            if (contextChanged $contextPaths.contextPath $checksum) {
                 Break
             } else {
                 logmsg "- Contextualization data were not changed"
@@ -169,6 +169,9 @@ function waitForContext($checksum)
         } else {
             logmsg "- No contextualization data found"
         }
+
+        logmsg "  ... Cleanup for the next iteration ..."
+        cleanup $contextPaths
 
         logmsg "  ... Sleep for $($sleep)s ..."
         Write-Host "`r`n" -NoNewline
@@ -184,14 +187,8 @@ function waitForContext($checksum)
     # make a copy of the context.sh in the case another event would happen and
     # trigger a new context.sh while still working on the previous one which
     # would result in a mismatched checksum...
-    $contextScriptPath = "$ctxDir\.opennebula-context.sh"
-    Copy-Item -Path $contextPath -Destination $contextScriptPath -Force
-
-    $contextPaths.contextScriptPath = [string]$contextScriptPath
-    $contextPaths.contextPath = [string]$contextPath
-    $contextPaths.contextDrive = $contextDrive
-    $contextPaths.contextLetter = [string]$contextLetter
-    $contextPaths.contextInitScriptPath = [string]$contextInitScriptPath
+    $contextPaths.contextScriptPath = "$ctxDir\.opennebula-context.sh"
+    Copy-Item -Path $contextPaths.contextPath -Destination $contextPaths.contextScriptPath -Force
 
     return $contextPaths
 }
@@ -994,7 +991,7 @@ function removeFile($file)
 {
     if ($file -ne "" -and (Test-Path $file)) {
         logmsg "* Removing the file: ${file}"
-        Remove-Item $file -Force
+        Remove-Item -Path $file -Force
     }
 }
 
@@ -1002,7 +999,21 @@ function removeDir($dir)
 {
     if ($dir -ne "" -and (Test-Path $dir)) {
         logmsg "* Removing the directory: ${dir}"
-        Remove-Item $dir -Recurse -Force
+        Remove-Item -Path $dir -Recurse -Force
+    }
+}
+
+function cleanup($contextPaths)
+{
+    if ($contextPaths.contextDrive) {
+        # Eject CD with 'context.sh' if requested
+        ejectContextCD $contextPaths.contextDrive
+    } else {
+        # Delete 'context.sh' if not on CD-ROM
+        removeFile $contextPaths.contextPath
+
+        # and downloaded init scripts
+        removeDir $contextPaths.contextInitScriptPath
     }
 }
 
@@ -1092,16 +1103,7 @@ do {
     removeFile $contextPaths.contextScriptPath
 
     # Cleanup at the end
-    if ($contextPaths.contextDrive) {
-        # Eject CD with 'context.sh' if requested
-        ejectContextCD $contextPaths.contextDrive
-    } else {
-        # Delete 'context.sh' if not on CD-ROM
-        removeFile $contextPaths.contextPath
-
-        # and downloaded init scripts
-        removeDir $contextPaths.contextInitScriptPath
-    }
+    cleanup $contextPaths
 
     Write-Host "`r`n" -NoNewline
 
