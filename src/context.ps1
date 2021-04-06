@@ -894,6 +894,8 @@ function reportReady($context, $contextLetter)
     $oneGateEndpoint = $context['ONEGATE_ENDPOINT']
     $vmId            = $context['VMID']
     $token           = $context['ONEGATE_TOKEN']
+    $retryCount      = 3
+    $retryWaitPeriod = 10
 
     if ($reportReady -and $reportReady.ToUpper() -eq 'YES') {
         logmsg '* Report Ready to OneGate'
@@ -919,44 +921,56 @@ function reportReady($context, $contextLetter)
             }
         }
 
-        try {
+        $retryNumber = 1
+        while ($true) {
+            try {
+                $body = 'READY=YES'
+                $target= $oneGateEndpoint + '/vm'
 
-            $body = 'READY=YES'
-            $target= $oneGateEndpoint + '/vm'
+                [System.Net.HttpWebRequest] $webRequest = [System.Net.WebRequest]::Create($target)
+                $webRequest.Timeout = 10000
+                $webRequest.Method = 'PUT'
+                $webRequest.Headers.Add('X-ONEGATE-TOKEN', $token)
+                $webRequest.Headers.Add('X-ONEGATE-VMID', $vmId)
+                $buffer = [System.Text.Encoding]::UTF8.GetBytes($body)
+                $webRequest.ContentLength = $buffer.Length
 
-            [System.Net.HttpWebRequest] $webRequest = [System.Net.WebRequest]::Create($target)
-            $webRequest.Timeout = 10000
-            $webRequest.Method = 'PUT'
-            $webRequest.Headers.Add('X-ONEGATE-TOKEN', $token)
-            $webRequest.Headers.Add('X-ONEGATE-VMID', $vmId)
-            $buffer = [System.Text.Encoding]::UTF8.GetBytes($body)
-            $webRequest.ContentLength = $buffer.Length
+                if ($oneGateEndpoint -ilike "https://*") {
+                    #For reporting on HTTPS OneGateEndpoint
+                    logmsg "  ... Use HTTPS for OneGateEndpoint report: $oneGateEndpoint"
+                    $AllProtocols = [System.Net.SecurityProtocolType]'Ssl3,Tls,Tls11,Tls12'
+                    [System.Net.ServicePointManager]::SecurityProtocol = $AllProtocols
+                    [System.Net.ServicePointManager]::Expect100Continue = $false
+                    [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true}
+                }
 
-            if ($oneGateEndpoint -ilike "https://*") {
-                #For reporting on HTTPS OneGateEndpoint
-                logmsg "  ... Use HTTPS for OneGateEndpoint report: $oneGateEndpoint"
-                $AllProtocols = [System.Net.SecurityProtocolType]'Ssl3,Tls,Tls11,Tls12'
-                [System.Net.ServicePointManager]::SecurityProtocol = $AllProtocols
-                [System.Net.ServicePointManager]::Expect100Continue = $false
-                [System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true}
+                $requestStream = $webRequest.GetRequestStream()
+                $requestStream.Write($buffer, 0, $buffer.Length)
+                $requestStream.Flush()
+                $requestStream.Close()
+
+                $response = $webRequest.getResponse()
+                if ($response.StatusCode -eq 'OK') {
+                    logmsg '  ... Success'
+                    break
+                } else {
+                    logmsg "  ... Failed: $($response.StatusCode)"
+                }
+            }
+            catch {
+                $errorMessage = $_.Exception.Message
+                logmsg "  ... Failed: $errorMessage"
             }
 
-            $requestStream = $webRequest.GetRequestStream()
-            $requestStream.Write($buffer, 0, $buffer.Length)
-            $requestStream.Flush()
-            $requestStream.Close()
-
-            $response = $webRequest.getResponse()
-            if ($response.StatusCode -eq 'OK') {
-                logmsg '  ... Success'
+            logmsg "  ... Report ready failed (${retryNumber}. try out of ${retryCount})"
+            $retryNumber++
+            if ($retryNumber -le $retryCount) {
+                logmsg "  ... sleep for ${retryWaitPeriod} seconds and try again..."
+                Start-Sleep -Seconds $retryWaitPeriod
             } else {
-                logmsg "  ... Failed: $($response.StatusCode)"
+                logmsg "  ... All retries failed!"
+                break
             }
-        }
-        catch {
-            $errorMessage = $_.Exception.Message
-
-            logmsg "  ... Failed:`r`n$errorMessage"
         }
     }
 }
