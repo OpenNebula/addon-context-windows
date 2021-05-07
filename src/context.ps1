@@ -871,20 +871,61 @@ function extendPartition($disk, $part)
   "select disk $disk","select partition $part","extend" | diskpart | Out-Null
 }
 
-function extendPartitions()
+function extendPartitions($context)
 {
     logmsg "* Extend partitions"
 
     "rescan" | diskpart
 
-    #$diskIds = ((wmic diskdrive get Index | Select-String "[0-9]+") -replace '\D','')
-    $diskId = 0
+    $disks = @()
 
-    #$partIds = ((wmic partition where DiskIndex=$diskId get Index | Select-String "[0-9]+") -replace '\D','' | %{[int]$_ + 1})
-    $partIds = "select disk $diskId", "list partition" | diskpart | Select-String -Pattern "^\s+\w+ (\d+)\s+" -AllMatches | %{$_.matches.groups[1].Value}
+    # Cmdlet 'Get-Partition' is not in older Windows/Powershell versions
+    if (Get-Command -errorAction SilentlyContinue -Name Get-Partition) {
+        if ([string]$context['GROW_ROOTFS'] -eq '' -or $context['GROW_ROOTFS'].ToUpper() -eq 'YES') {
+            # Add at least C:
+            $drives = "C: $($context['GROW_FS'])"
+        } else {
+            $drives = "$($context['GROW_FS'])"
+        }
 
-    ForEach ($partId in $partIds) {
-        extendPartition $diskId $partId
+        $driveLetters = (-split $drives | Select-String -Pattern "^(\w):?[\/]?$" -AllMatches | %{$_.matches.groups[1].Value} | Sort-Object -Unique)
+
+        ForEach ($driveLetter in $driveLetters) {
+            $disk = New-Object PsObject -Property @{
+                name=$null;
+                diskId=$null ;
+                partIds=@()
+                }
+            # TODO: in the future an AccessPath can be used instead of just DriveLetter
+            $drive = (Get-Partition -DriveLetter $driveLetter)
+            $disk.name = "$driveLetter" + ':'
+            $disk.diskId = $drive.DiskNumber
+            $disk.partIds += $drive.PartitionNumber
+            $disks += $disk
+        }
+    } Else {
+        # always resize at least the disk 0
+        $disk = New-Object PsObject -Property @{
+            name=$null;
+            diskId=0 ;
+            partIds=@()
+            }
+
+        # select all parts - preserve old behavior for disk 0
+        $disk.partIds = "select disk $($disk.diskId)", "list partition" | diskpart | Select-String -Pattern "^\s+\w+ (\d+)\s+" -AllMatches | %{$_.matches.groups[1].Value}
+        $disks += $disk
+    }
+
+    # extend all requested disk/part
+    ForEach ($disk in $disks) {
+        ForEach ($partId in $disk.partIds) {
+            if ($disk.name) {
+                logmsg "- Extend ($($disk.name)) Disk: $($disk.diskId) / Part: $partId"
+            } Else {
+                logmsg "- Extend Disk: $($disk.diskId) / Part: $partId"
+            }
+            extendPartition $disk.diskId $partId
+        }
     }
 }
 
@@ -1099,7 +1140,7 @@ do {
     $context = getContext $contextPaths.contextScriptPath
 
     # Execute the contextualization actions
-    extendPartitions
+    extendPartitions $context
     setTimeZone $context
     addLocalUser $context
     enableRemoteDesktop
