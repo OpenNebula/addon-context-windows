@@ -30,6 +30,7 @@ For beta releases, refer to the latest
 * latest [msitools](https://wiki.gnome.org/msitools)
 * binary [nssm.exe](https://nssm.cc/) [present]
 * binary [rhsrvany.exe](https://github.com/rwmjones/rhsrvany) [optional]
+* `mkisofs`
 
 The service manager **NSSM** is the preferred tool to manage services because
 it handles long running services better and more correctly (srvany/rhsrvany

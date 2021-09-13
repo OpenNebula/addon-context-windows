@@ -301,7 +301,8 @@ function configureNetwork($context)
         $ip6Key       = $nicPrefix + "IP6"
         $ip6ULAKey    = $nicPrefix + "IP6_ULA"
         $ip6PrefixKey = $nicPrefix + "IP6_PREFIX_LENGTH"
-        $gw6Key       = $nicPrefix + "GATEWAY6"
+        $ip6GwKey     = $nicPrefix + "IP6_GATEWAY"
+        $gw6Key       = $nicPrefix + "GATEWAY6" # backward compatibility
         $mtuKey       = $nicPrefix + "MTU"
         $metricKey    = $nicPrefix + "METRIC"
 
@@ -319,7 +320,7 @@ function configureNetwork($context)
         $ip6       = $context[$ip6Key]
         $ip6ULA    = $context[$ip6ULAKey]
         $ip6Prefix = $context[$ip6PrefixKey]
-        $gw6       = $context[$gw6Key]
+        $ip6Gw     = $context[$ip6GwKey]
 
         $mac = $mac.ToUpper()
         if (!$netmask) {
@@ -327,6 +328,9 @@ function configureNetwork($context)
         }
         if (!$ip6Prefix) {
             $ip6Prefix = "64"
+        }
+        if (!$ip6Gw) {
+            $ip6Gw = $context[$gw6Key]
         }
         if (!$network) {
             $network = $ip -replace "\.[^.]+$", ".0"
@@ -511,9 +515,9 @@ function configureNetwork($context)
             }
 
             # Set IPv6 Gateway
-            if ($gw6) {
+            if ($ip6Gw) {
                 logmsg "- Set IPv6 Gateway"
-                netsh interface ipv6 add route ::/0 $na.NetConnectionId $gw6
+                netsh interface ipv6 add route ::/0 $na.NetConnectionId $ip6Gw
 
                 If ($?) {
                     logmsg "  ... Success"
