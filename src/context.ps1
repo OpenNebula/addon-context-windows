@@ -280,47 +280,31 @@ function configureNetwork($context)
 {
 
     # Get the NIC in the Context
-    $nicIds = ($context.Keys | Where {$_ -match '^ETH\d+_IP6?$'} | ForEach-Object {$_ -replace '(^ETH|_IP$|_IP6$)',''} | Sort-Object -Unique)
+    $nicIds = ($context.Keys | Where {$_ -match '^ETH\d+_MAC$'} | ForEach-Object {$_ -replace '(^ETH|_MAC$)',''} | Sort-Object -Unique)
 
     $nicId = 0;
 
     foreach ($nicId in $nicIds) {
-        # Retrieve data from Context
-        $nicIpKey = "ETH" + $nicId + "_IP"
-        $nicIp6Key = "ETH" + $nicId + "_IP6"
         $nicPrefix = "ETH" + $nicId + "_"
 
-        $ipKey        = $nicPrefix + "IP"
-        $netmaskKey   = $nicPrefix + "MASK"
-        $macKey       = $nicPrefix + "MAC"
-        $dnsKey       = $nicPrefix + "DNS"
-        $dnsSuffixKey = $nicPrefix + "SEARCH_DOMAIN"
-        $gatewayKey   = $nicPrefix + "GATEWAY"
-        $networkKey   = $nicPrefix + "NETWORK"
+        $method    = $context[$nicPrefix + 'METHOD']
+        $ip        = $context[$nicPrefix + 'IP']
+        $netmask   = $context[$nicPrefix + 'MASK']
+        $mac       = $context[$nicPrefix + 'MAC']
+        $dns       = (($context[$nicPrefix + 'DNS'] -split " " | Where {$_ -match '^(([0-9]*).?){4}$'}) -join ' ')
+        $dns6      = (($context[$nicPrefix + 'DNS'] -split " " | Where {$_ -match '^(([0-9A-F]*):?)*$'}) -join ' ')
+        $dnsSuffix = $context[$nicPrefix + 'SEARCH_DOMAIN']
+        $gateway   = $context[$nicPrefix + 'GATEWAY']
+        $network   = $context[$nicPrefix + 'NETWORK']
+        $mtu       = $context[$nicPrefix + 'MTU']
+        $metric    = $context[$nicPrefix + 'METRIC']
 
-        $ip6Key       = $nicPrefix + "IP6"
-        $ip6ULAKey    = $nicPrefix + "IP6_ULA"
-        $ip6PrefixKey = $nicPrefix + "IP6_PREFIX_LENGTH"
-        $ip6GwKey     = $nicPrefix + "IP6_GATEWAY"
-        $gw6Key       = $nicPrefix + "GATEWAY6" # backward compatibility
-        $mtuKey       = $nicPrefix + "MTU"
-        $metricKey    = $nicPrefix + "METRIC"
-
-        $ip        = $context[$ipKey]
-        $netmask   = $context[$netmaskKey]
-        $mac       = $context[$macKey]
-        $dns       = (($context[$dnsKey] -split " " | Where {$_ -match '^(([0-9]*).?){4}$'}) -join ' ')
-        $dns6      = (($context[$dnsKey] -split " " | Where {$_ -match '^(([0-9A-F]*):?)*$'}) -join ' ')
-        $dnsSuffix = $context[$dnsSuffixKey]
-        $gateway   = $context[$gatewayKey]
-        $network   = $context[$networkKey]
-        $mtu       = $context[$mtuKey]
-        $metric    = $context[$metricKey]
-
-        $ip6       = $context[$ip6Key]
-        $ip6ULA    = $context[$ip6ULAKey]
-        $ip6Prefix = $context[$ip6PrefixKey]
-        $ip6Gw     = $context[$ip6GwKey]
+        $ip6Method = $context[$nicPrefix + 'IP6_METHOD']
+        $ip6       = $context[$nicPrefix + 'IP6']
+        $ip6ULA    = $context[$nicPrefix + 'IP6_ULA']
+        $ip6Prefix = $context[$nicPrefix + 'IP6_PREFIX_LENGTH']
+        $ip6Gw     = $context[$nicPrefix + 'IP6_GATEWAY']
+        $ip6Metric = $context[$nicPrefix + 'IP6_METRIC']
 
         $mac = $mac.ToUpper()
         if (!$netmask) {
@@ -330,13 +314,26 @@ function configureNetwork($context)
             $ip6Prefix = "64"
         }
         if (!$ip6Gw) {
-            $ip6Gw = $context[$gw6Key]
+            # Backward compatibility, new context parameter
+            # ETHx_IP6_GATEWAY introduced since 6.2
+            $ip6Gw = $context[$nicPrefix + 'GATEWAY6']
+        }
+        if (!$ip6Metric) {
+            $ip6Metric = $metric
         }
         if (!$network) {
             $network = $ip -replace "\.[^.]+$", ".0"
         }
         if ($nicId -eq 0 -and !$gateway) {
             $gateway = $ip -replace "\.[^.]+$", ".1"
+        }
+
+        # default NIC configuration methods
+        if (!$method) {
+            $method = 'static'
+        }
+        if (!$ip6Method) {
+            $ip6Method = $method
         }
 
         # Load the NIC Configuration Object
@@ -355,203 +352,333 @@ function configureNetwork($context)
             Continue
         }
 
-        logmsg ("* Configuring Network Settings: " + $nic.Description.ToString())
+        # We need the connection ID (i.e. "Local Area Connection",
+        # which can be discovered from the NetworkAdapter object
+        $na = Get-WMIObject Win32_NetworkAdapter | `
+                where {$_.deviceId -eq $nic.index}
 
-        # Release the DHCP lease, will fail if adapter not DHCP Configured
-        logmsg "- Release DHCP Lease"
-        $ret = $nic.ReleaseDHCPLease()
-        If ($ret.ReturnValue) {
-            logmsg ("  ... Failed: " + $ret.ReturnValue.ToString())
-        } Else {
-            logmsg "  ... Success"
+        If (!$na) {
+            logmsg ("* Configuring Network Settings: " + $mac)
+            logmsg ("  ... Failed: Network Adapter not found")
+            Continue
         }
 
-        if ($ip) {
-            # set static IP address and retry for few times if there was a problem
-            # with acquiring write lock (2147786788) for network configuration
-            # https://msdn.microsoft.com/en-us/library/aa390383(v=vs.85).aspx
-            logmsg "- Set Static IP"
-            $retry = 10
-            do {
-                $retry--
-                Start-Sleep -s 1
-                $ret = $nic.EnableStatic($ip , $netmask)
-            } while ($ret.ReturnValue -eq 2147786788 -and $retry);
-            If ($ret.ReturnValue) {
-                logmsg ("  ... Failed: " + $ret.ReturnValue.ToString())
-            } Else {
-                logmsg "  ... Success"
-            }
+        logmsg ("* Configuring Network Settings: " + $nic.Description.ToString())
 
-            # Set IPv4 MTU
-            if ($mtu) {
-                logmsg "- Set MTU: ${mtu}"
-                netsh interface ipv4 set interface $nic.InterfaceIndex mtu=$mtu
+        # Flag to indicate if any IPv4/6 configuration was placed
+        $set_ip_conf = $false
 
-                If ($?) {
-                    logmsg "  ... Success"
-                } Else {
-                    logmsg "  ... Failed"
+        # IPv4 Configuration Methods
+        Switch -Regex ($method)
+        {
+            '^\s*static\s*$' {
+                if ($ip) {
+                    # Release the DHCP lease, will fail if adapter not DHCP Configured
+                    logmsg "- Release DHCP Lease"
+                    $ret = $nic.ReleaseDHCPLease()
+                    If ($ret.ReturnValue) {
+                        logmsg ("  ... Failed: " + $ret.ReturnValue.ToString())
+                    } Else {
+                        logmsg "  ... Success"
+                    }
+
+                    # set static IP address and retry for few times if there was a problem
+                    # with acquiring write lock (2147786788) for network configuration
+                    # https://msdn.microsoft.com/en-us/library/aa390383(v=vs.85).aspx
+                    logmsg "- Set Static IP"
+                    $retry = 10
+                    do {
+                        $retry--
+                        Start-Sleep -s 1
+                        $ret = $nic.EnableStatic($ip , $netmask)
+                    } while ($ret.ReturnValue -eq 2147786788 -and $retry);
+                    If ($ret.ReturnValue) {
+                        logmsg ("  ... Failed: " + $ret.ReturnValue.ToString())
+                    } Else {
+                        logmsg "  ... Success"
+                    }
+
+                    # Set IPv4 MTU
+                    if ($mtu) {
+                        logmsg "- Set MTU: ${mtu}"
+                        netsh interface ipv4 set interface $nic.InterfaceIndex mtu=$mtu
+
+                        If ($?) {
+                            logmsg "  ... Success"
+                        } Else {
+                            logmsg "  ... Failed"
+                        }
+                    }
+
+                    # Set the Gateway
+                    if ($gateway) {
+                        if ($metric) {
+                            logmsg "- Set Gateway with metric"
+                            $ret = $nic.SetGateways($gateway, $metric)
+                        } Else {
+                            logmsg "- Set Gateway"
+                            $ret = $nic.SetGateways($gateway)
+                        }
+
+                        If ($ret.ReturnValue) {
+                            logmsg ("  ... Failed: " + $ret.ReturnValue.ToString())
+                        } Else {
+                            logmsg "  ... Success"
+                        }
+                    }
+
+                    # Set DNS servers
+                    If ($dns) {
+                        $dnsServers = $dns -split " "
+
+                        # DNS Server Search Order
+                        logmsg "- Set DNS Server Search Order"
+                        $ret = $nic.SetDNSServerSearchOrder($dnsServers)
+                        If ($ret.ReturnValue) {
+                            logmsg ("  ... Failed: " + $ret.ReturnValue.ToString())
+                        } Else {
+                            logmsg "  ... Success"
+                        }
+
+                        # Set Dynamic DNS Registration
+                        logmsg "- Set Dynamic DNS Registration"
+                        $ret = $nic.SetDynamicDNSRegistration("TRUE")
+                        If ($ret.ReturnValue) {
+                            logmsg ("  ... Failed: " + $ret.ReturnValue.ToString())
+                        } Else {
+                            logmsg "  ... Success"
+                        }
+
+                        # WINS Addresses
+                        # $nic.SetWINSServer($DNSServers[0], $DNSServers[1])
+                    }
+
+                    # Set DNS domain/search order
+                    if ($dnsSuffix) {
+                        $dnsSuffixes = $dnsSuffix -split " "
+
+                        # Set DNS Suffix Search Order
+                        logmsg "- Set DNS Suffix Search Order"
+                        $ret = ([WMIClass]"Win32_NetworkAdapterConfiguration").SetDNSSuffixSearchOrder(($dnsSuffixes))
+                        If ($ret.ReturnValue) {
+                            logmsg ("  ... Failed: " + $ret.ReturnValue.ToString())
+                        } Else {
+                            logmsg "  ... Success"
+                        }
+
+                        # Set Primary DNS Domain
+                        logmsg "- Set Primary DNS Domain"
+                        $ret = $nic.SetDNSDomain($dnsSuffixes[0])
+                        If ($ret.ReturnValue) {
+                            logmsg ("  ... Failed: " + $ret.ReturnValue.ToString())
+                        } Else {
+                            logmsg "  ... Success"
+                        }
+                    }
+
+                    $set_ip_conf = $true
+                } else {
+                    logmsg "- No static IPv4 configuration provided, skipping"
                 }
             }
 
-            if ($gateway) {
-
-                # Set the Gateway
-                if ($metric) {
-                    logmsg "- Set Gateway with metric"
-                    $ret = $nic.SetGateways($gateway, $metric)
-                } Else {
-                    logmsg "- Set Gateway"
-                    $ret = $nic.SetGateways($gateway)
-                }
+            '^\s*dhcp\s*$' {
+                # Enable DHCP
+                logmsg "- Enable DHCP"
+                $ret = $nic.EnableDHCP()
+                # TODO: 1 ... Successful completion, reboot required
                 If ($ret.ReturnValue) {
                     logmsg ("  ... Failed: " + $ret.ReturnValue.ToString())
                 } Else {
                     logmsg "  ... Success"
                 }
 
-                If ($dns) {
+                # Set IPv4 MTU
+                if ($mtu) {
+                    logmsg "- Set MTU: ${mtu}"
+                    netsh interface ipv4 set interface $nic.InterfaceIndex mtu=$mtu
 
-                    # DNS Servers
-                    $dnsServers = $dns -split " "
-
-                    # DNS Server Search Order
-                    logmsg "- Set DNS Server Search Order"
-                    $ret = $nic.SetDNSServerSearchOrder($dnsServers)
-                    If ($ret.ReturnValue) {
-                        logmsg ("  ... Failed: " + $ret.ReturnValue.ToString())
-                    } Else {
+                    If ($?) {
                         logmsg "  ... Success"
-                    }
-
-                    # Set Dynamic DNS Registration
-                    logmsg "- Set Dynamic DNS Registration"
-                    $ret = $nic.SetDynamicDNSRegistration("TRUE")
-                    If ($ret.ReturnValue) {
-                        logmsg ("  ... Failed: " + $ret.ReturnValue.ToString())
                     } Else {
-                        logmsg "  ... Success"
-                    }
-
-                    # WINS Addresses
-                    # $nic.SetWINSServer($DNSServers[0], $DNSServers[1])
-                }
-
-                if ($dnsSuffix) {
-
-                    # DNS Suffixes
-                    $dnsSuffixes = $dnsSuffix -split " "
-
-                    # Set DNS Suffix Search Order
-                    logmsg "- Set DNS Suffix Search Order"
-                    $ret = ([WMIClass]"Win32_NetworkAdapterConfiguration").SetDNSSuffixSearchOrder(($dnsSuffixes))
-                    If ($ret.ReturnValue) {
-                        logmsg ("  ... Failed: " + $ret.ReturnValue.ToString())
-                    } Else {
-                        logmsg "  ... Success"
-                    }
-
-                    # Set Primary DNS Domain
-                    logmsg "- Set Primary DNS Domain"
-                    $ret = $nic.SetDNSDomain($dnsSuffixes[0])
-                    If ($ret.ReturnValue) {
-                        logmsg ("  ... Failed: " + $ret.ReturnValue.ToString())
-                    } Else {
-                        logmsg "  ... Success"
+                        logmsg "  ... Failed"
                     }
                 }
+
+                $set_ip_conf = $true
+            }
+
+            '\s*skip\s*$' {
+                logmsg "- Skipped IPv4 configuration as requested in method (${nicPrefix}METHOD=${method})"
+            }
+
+            Default {
+                logmsg "- Unknown IPv4 method (${nicPrefix}METHOD=${method}), skipping configuration"
             }
         }
 
-        if ($ip6) {
-            # We need the connection ID (i.e. "Local Area Connection",
-            # which can be discovered from the NetworkAdapter object
-            $na = Get-WMIObject Win32_NetworkAdapter | `
-                    where {$_.deviceId -eq $nic.index}
+        # IPv6 Configuration Methods
+        Switch -Regex ($ip6Method)
+        {
+            '^\s*static\s*$' {
+                if ($ip6) {
+                    enableIPv6
+                    disableIPv6Privacy
 
+                    # Disable router discovery
+                    logmsg "- Disable IPv6 router discovery"
+                    netsh interface ipv6 set interface $na.NetConnectionId `
+                        advertise=disabled routerdiscover=disabled | Out-Null
 
-            # Disable router discovery
-            logmsg "- Disable IPv6 router discovery"
-            netsh interface ipv6 set interface $na.NetConnectionId `
-                advertise=disabled routerdiscover=disabled | Out-Null
+                    If ($?) {
+                        logmsg "  ... Success"
+                    } Else {
+                        logmsg "  ... Failed"
+                    }
 
-            If ($?) {
-                logmsg "  ... Success"
-            } Else {
-                logmsg "  ... Failed"
-            }
+                    # Remove old IPv6 addresses
+                    logmsg "- Removing old IPv6 addresses"
+                    if (Get-Command Remove-NetIPAddress -errorAction SilentlyContinue) {
+                        # Windows 8.1 and Server 2012 R2 and up
+                        # we want to remove everything except the link-local address
+                        Remove-NetIPAddress -InterfaceAlias $na.NetConnectionId `
+                            -AddressFamily IPv6 -Confirm:$false `
+                            -PrefixOrigin Other,Manual,Dhcp,RouterAdvertisement `
+                            -errorAction SilentlyContinue
 
-            # Remove old IPv6 addresses
-            logmsg "- Removing old IPv6 addresses"
-            if (Get-Command Remove-NetIPAddress -errorAction SilentlyContinue) {
-                # Windows 8.1 and Server 2012 R2 and up
-                # we want to remove everything except the link-local address
-                Remove-NetIPAddress -InterfaceAlias $na.NetConnectionId `
-                    -AddressFamily IPv6 -Confirm:$false `
-                    -PrefixOrigin Other,Manual,Dhcp,RouterAdvertisement `
-                    -errorAction SilentlyContinue
+                        If ($?) {
+                            logmsg "  ... Success"
+                        } Else {
+                            logmsg "  ... Nothing to do"
+                        }
+                    } Else {
+                        logmsg "  ... Not implemented"
+                    }
 
-                If ($?) {
-                    logmsg "  ... Success"
-                } Else {
-                    logmsg "  ... Nothing to do"
+                    # Set IPv6 Address
+                    logmsg "- Set IPv6 Address"
+                    netsh interface ipv6 add address $na.NetConnectionId $ip6/$ip6Prefix
+                    If ($? -And $ip6ULA) {
+                        netsh interface ipv6 add address $na.NetConnectionId $ip6ULA/64
+                    }
+
+                    If ($?) {
+                        logmsg "  ... Success"
+                    } Else {
+                        logmsg "  ... Failed"
+                    }
+
+                    # Set IPv6 Gateway
+                    if ($ip6Gw) {
+                        if ($ip6Metric) {
+                            logmsg "- Set IPv6 Gateway with metric"
+                            netsh interface ipv6 add route ::/0 $na.NetConnectionId $ip6Gw metric="${ip6Metric}"
+                        } else {
+                            logmsg "- Set IPv6 Gateway"
+                            netsh interface ipv6 add route ::/0 $na.NetConnectionId $ip6Gw
+                        }
+
+                        If ($?) {
+                            logmsg "  ... Success"
+                        } Else {
+                            logmsg "  ... Failed"
+                        }
+                    }
+
+                    # Set IPv6 MTU
+                    if ($mtu) {
+                        logmsg "- Set IPv6 MTU: ${mtu}"
+                        netsh interface ipv6 set interface $nic.InterfaceIndex mtu=$mtu
+
+                        If ($?) {
+                            logmsg "  ... Success"
+                        } Else {
+                            logmsg "  ... Failed"
+                        }
+                    }
+
+                    # Remove old IPv6 DNS Servers
+                    logmsg "- Removing old IPv6 DNS Servers"
+                    netsh interface ipv6 set dnsservers $na.NetConnectionId source=static address=
+
+                    If ($dns6) {
+                        # Set IPv6 DNS Servers
+                        logmsg "- Set IPv6 DNS Servers"
+                        $dns6Servers = $dns6 -split " "
+                        foreach ($dns6Server in $dns6Servers) {
+                            netsh interface ipv6 add dnsserver $na.NetConnectionId address=$dns6Server
+                        }
+                    }
+
+                    $set_ip_conf = $true
+
+                    doPing($ip6)
+                } else {
+                    logmsg "- No static IPv6 configuration provided, skipping"
                 }
-            } Else {
-                logmsg "  ... Not implemented"
             }
 
-            # Set IPv6 Address
-            logmsg "- Set IPv6 Address"
-            netsh interface ipv6 add address $na.NetConnectionId $ip6/$ip6Prefix
-            If ($? -And $ip6ULA) {
-                netsh interface ipv6 add address $na.NetConnectionId $ip6ULA/64
-            }
+            '^\s*(auto|dhcp)\s*$' {
+                enableIPv6
+                disableIPv6Privacy
 
-            If ($?) {
-                logmsg "  ... Success"
-            } Else {
-                logmsg "  ... Failed"
-            }
+                # Enable router discovery
+                logmsg "- Enable IPv6 router discovery"
+                netsh interface ipv6 set interface $na.NetConnectionId `
+                    advertise=disabled routerdiscover=enabled | Out-Null
 
-            # Set IPv6 Gateway
-            if ($ip6Gw) {
-                logmsg "- Set IPv6 Gateway"
-                netsh interface ipv6 add route ::/0 $na.NetConnectionId $ip6Gw
+                # Run of DHCPv6 client is controlled by RA managed/other
+                # flags, we can't we can't independently enable/disable DHCPv6
+                # client. So at least we release the address allocated
+                # through DHCPv6 in auto mode. See
+                # https://serverfault.com/questions/692291/disable-dhcpv6-client-in-windows
+                if ($ip6Method -match '^\s*auto\s*$') {
+                    logmsg "- Release DHCPv6 Lease (selected method auto, not dhcp!)"
+                    ipconfig /release6 $na.NetConnectionId
 
-                If ($?) {
-                    logmsg "  ... Success"
-                } Else {
-                    logmsg "  ... Failed"
+                    If ($?) {
+                        logmsg "  ... Success"
+                    } Else {
+                        logmsg "  ... Failed"
+                    }
                 }
-            }
 
-            # Set IPv6 MTU
-            if ($mtu) {
-                logmsg "- Set IPv6 MTU: ${mtu}"
-                netsh interface ipv6 set interface $nic.InterfaceIndex mtu=$mtu
+                # Set IPv6 MTU
+                if ($mtu) {
+                    logmsg "- Set IPv6 MTU: ${mtu}"
+                    logmsg "WARNING: MTU will be overwritten if announced as part of RA!"
+                    netsh interface ipv6 set interface $nic.InterfaceIndex mtu=$mtu
 
-                If ($?) {
-                    logmsg "  ... Success"
-                } Else {
-                    logmsg "  ... Failed"
+                    If ($?) {
+                        logmsg "  ... Success"
+                    } Else {
+                        logmsg "  ... Failed"
+                    }
                 }
+
+                $set_ip_conf = $true
             }
 
-            # Remove old IPv6 DNS Servers
-            logmsg "- Removing old IPv6 DNS Servers"
-            netsh interface ipv6 set dnsservers $na.NetConnectionId source=static address=
-
-            If ($dns6) {
-                # Set IPv6 DNS Servers
-                logmsg "- Set IPv6 DNS Servers"
-                $dns6Servers = $dns6 -split " "
-                foreach ($dns6Server in $dns6Servers) {
-                    netsh interface ipv6 add dnsserver $na.NetConnectionId address=$dns6Server
-                }
+            '^\s*disable\s*$' {
+                disableIPv6
             }
 
-            doPing($ip6)
+            '\s*skip\s*$' {
+                logmsg "- Skipped IPv6 configuration as requested in method (${nicPrefix}IP6_METHOD=${ip6Method})"
+            }
+
+            Default {
+                logmsg "- Unknown IPv6 method (${nicPrefix}IP6_METHOD=${ip6Method}), skipping configuration"
+            }
+        }
+
+        ###
+
+        # If no IP configuration happened, we skip
+        # configuring additional IP addresses (aliases)
+        If ($set_ip_conf -eq $false) {
+            logmsg "- Skipped IP aliases configuration due to missing main IP"
+            Continue
         }
 
         # Get the aliases for the NIC in the Context
@@ -812,6 +939,55 @@ function doPing($ip, $retries=20)
         logmsg "  ... Success ($retry tries)"
     } Else {
         logmsg "  ... Failed ($retry tries)"
+    }
+}
+
+function disableIPv6Privacy()
+{
+    # Disable Randomization of IPv6 addresses (use EUI-64)
+    logmsg "- Globally disable IPv6 Identifiers Randomization"
+    netsh interface ipv6 set global randomizeidentifiers=disable
+
+    If ($?) {
+        logmsg "  ... Success"
+    } Else {
+        logmsg "  ... Failed"
+    }
+
+    # Disable IPv6 Privacy Extensions (temporary addresses)
+    logmsg "- Globally disable IPv6 Privacy Extensions"
+    netsh interface ipv6 set privacy state=disabled
+
+    If ($?) {
+        logmsg "  ... Success"
+    } Else {
+        logmsg "  ... Failed"
+    }
+}
+
+function enableIPv6()
+{
+    logmsg '- Enabling IPv6'
+
+    Enable-NetAdapterBinding -Name $na.NetConnectionId -ComponentID ms_tcpip6
+
+    If ($?) {
+        logmsg "  ... Success"
+    } Else {
+        logmsg "  ... Failed"
+    }
+}
+
+function disableIPv6()
+{
+    logmsg '- Disabling IPv6'
+
+    Disable-NetAdapterBinding -Name $na.NetConnectionId -ComponentID ms_tcpip6
+
+    If ($?) {
+        logmsg "  ... Success"
+    } Else {
+        logmsg "  ... Failed"
     }
 }
 
