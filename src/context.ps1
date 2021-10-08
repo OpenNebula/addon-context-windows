@@ -628,7 +628,7 @@ function configureNetwork($context)
                     advertise=disabled routerdiscover=enabled | Out-Null
 
                 # Run of DHCPv6 client is controlled by RA managed/other
-                # flags, we can't we can't independently enable/disable DHCPv6
+                # flags, we can't independently enable/disable DHCPv6
                 # client. So at least we release the address allocated
                 # through DHCPv6 in auto mode. See
                 # https://serverfault.com/questions/692291/disable-dhcpv6-client-in-windows
