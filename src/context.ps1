@@ -85,8 +85,6 @@ function waitForContext($checksum)
     Write-Host "`r`n" -NoNewline
 
     do {
-        logmsg "* Detecting contextualization data"
-        logmsg "- Looking for CONTEXT ISO"
 
         # Reset the contextPath
         $contextPaths.contextPath = ""
@@ -95,24 +93,18 @@ function waitForContext($checksum)
         $contextPaths.contextDrive = Get-WMIObject Win32_Volume | ? { $_.Label -eq "CONTEXT" }
 
         if ($contextPaths.contextDrive) {
-            logmsg "  ... Found"
 
             # At this point we can obtain the letter of the contextDrive
             $contextPaths.contextLetter = $contextPaths.contextDrive.Name
             $contextPaths.contextPath = $contextPaths.contextLetter + "context.sh"
             $contextPaths.contextInitScriptPath = $contextPaths.contextLetter
         } else {
-            logmsg "  ... Not found"
-            logmsg "- Looking for VMware tools"
 
             # Try the VMware API
             foreach ($pf in ${env:ProgramFiles}, ${env:ProgramFiles(x86)}, ${env:ProgramW6432}) {
                 $vmtoolsd = "${pf}\VMware\VMware Tools\vmtoolsd.exe"
                 if (Test-Path $vmtoolsd) {
-                    logmsg "  ... Found in ${vmtoolsd}"
                     break
-                } else {
-                    logmsg "  ... Not found in ${vmtoolsd}"
                 }
             }
 
@@ -158,22 +150,15 @@ function waitForContext($checksum)
 
         # Terminate the wait-loop only when context.sh is found and changed
         if ([string]$contextPaths.contextPath -ne "" -and (Test-Path $contextPaths.contextPath)) {
-            logmsg "- Found contextualization data: $($contextPaths.contextPath)"
 
             # Context must differ
             if (contextChanged $contextPaths.contextPath $checksum) {
                 Break
-            } else {
-                logmsg "- Contextualization data were not changed"
             }
-        } else {
-            logmsg "- No contextualization data found"
         }
 
-        logmsg "  ... Cleanup for the next iteration ..."
         cleanup $contextPaths
 
-        logmsg "  ... Sleep for $($sleep)s ..."
         Write-Host "`r`n" -NoNewline
         Start-Sleep -Seconds $sleep
     } while ($true)
