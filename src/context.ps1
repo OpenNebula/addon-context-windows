@@ -36,7 +36,6 @@ function logmsg($message)
 
 function getContext($file)
 {
-    logmsg "* Loading Context File"
     $context = @{}
     switch -regex -file $file {
         "^([^=]+)='(.+?)'$" {
@@ -75,14 +74,6 @@ function waitForContext($checksum)
 
     # How long to wait before another poll (in seconds)
     $sleep = 30
-
-    logmsg "* Starting a wait-loop with the interval of $sleep seconds..."
-
-    Write-Host "`r`n" -NoNewline
-    Write-Host "***********************`r`n" -NoNewline
-    Write-Host "*** WAIT-LOOP START ***`r`n" -NoNewline
-    Write-Host "***********************`r`n" -NoNewline
-    Write-Host "`r`n" -NoNewline
 
     do {
 
@@ -162,12 +153,6 @@ function waitForContext($checksum)
         Write-Host "`r`n" -NoNewline
         Start-Sleep -Seconds $sleep
     } while ($true)
-
-    Write-Host "`r`n" -NoNewline
-    Write-Host "***********************`r`n" -NoNewline
-    Write-Host "***  WAIT-LOOP END  ***`r`n" -NoNewline
-    Write-Host "***********************`r`n" -NoNewline
-    Write-Host "`r`n" -NoNewline
 
     # make a copy of the context.sh in the case another event would happen and
     # trigger a new context.sh while still working on the previous one which
