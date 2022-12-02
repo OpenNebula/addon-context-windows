@@ -140,7 +140,7 @@ function waitForContext($checksum)
         }
 
         # Terminate the wait-loop only when context.sh is found and changed
-        if ([string]$contextPaths.contextPath -ne "" -and (Test-Path $contextPaths.contextPath)) {
+        if (![string]::IsNullOrEmpty($contextPaths.contextPath) -and (Test-Path $contextPaths.contextPath)) {
 
             # Context must differ
             if (contextChanged $contextPaths.contextPath $checksum) {
@@ -1194,7 +1194,7 @@ function ejectContextCD($cdrom_drive)
 
 function removeFile($file)
 {
-    if ($file -ne "" -and (Test-Path $file)) {
+    if (![string]::IsNullOrEmpty($file) -and (Test-Path $file)) {
         logmsg "* Removing the file: ${file}"
         Remove-Item -Path $file -Force
     }
@@ -1202,7 +1202,7 @@ function removeFile($file)
 
 function removeDir($dir)
 {
-    if ($dir -ne "" -and (Test-Path $dir)) {
+    if (![string]::IsNullOrEmpty($dir) -and (Test-Path $dir)) {
         logmsg "* Removing the directory: ${dir}"
         Remove-Item -Path $dir -Recurse -Force
     }
