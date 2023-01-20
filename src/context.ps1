@@ -1177,14 +1177,12 @@ function ejectContextCD($cdrom_drive)
     if ($eject_cdrom -ne $null -and $eject_cdrom.ToUpper() -eq 'YES') {
         logmsg '* Ejecting context CD'
         try {
-            $disk_master = New-Object -ComObject IMAPI2.MsftDiscMaster2
-            for ($cdrom_id = 0; $cdrom_id -lt $disk_master.Count; $cdrom_id++) {
-                $disk_recorder = New-Object -ComObject IMAPI2.MsftDiscRecorder2
-                $disk_recorder.InitializeDiscRecorder($disk_master.Item($cdrom_id))
-                if ($disk_recorder.VolumeName -eq $cdrom_drive.DeviceID) {
-                    $disk_recorder.EjectMedia()
-                    break
-                }
+            #https://learn.microsoft.com/en-us/windows/win32/api/shldisp/ne-shldisp-shellspecialfolderconstants
+            $ssfDRIVES = 0x11
+            $sh = New-Object -ComObject "Shell.Application"
+            $sh.Namespace($ssfDRIVES).Items() | Where-Object { $_.Type -eq "CD Drive" -and $_.Path -eq $cdrom_drive.Name } | ForEach-Object {
+                $_.InvokeVerb("Eject")
+                logmsg " ... Ejected $($cdrom_drive.Name)"
             }
         } catch {
             logmsg "  ... Failed to eject the CD: $_"
