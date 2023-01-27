@@ -34,6 +34,13 @@ function logmsg($message)
     Write-Host "[$(Get-Date -Format 'yyyy-MM-dd HH:mm K')] $message`r`n" -NoNewline
 }
 
+function logsuccess {
+    logmsg "  ... Success"
+}
+function logfail {
+    logmsg "  ... Failed"
+}
+
 function getContext($file)
 {
     $context = @{}
@@ -1246,11 +1253,20 @@ function authorizeSSHKeyAdmin {
 
     $authorizedKeysPath = "$env:ProgramData\ssh\administrators_authorized_keys"
 
+    logmsg "* Authorizing SSH_PUBLIC_KEY for admin user"
+
     # whitelisting
     Set-Content $authorizedKeysPath $authorizedKeys;
 
-    # permissions
-    icacls.exe $authorizedKeysPath /inheritance:r /grant Administrators:F /grant SYSTEM:F
+    if ($?) {
+        # permissions
+        icacls.exe $authorizedKeysPath /inheritance:r /grant Administrators:F /grant SYSTEM:F
+
+        logsuccess
+    } else {
+        logfail
+    }
+
 }
 
 function authorizeSSHKeyStandard {
@@ -1260,8 +1276,16 @@ function authorizeSSHKeyStandard {
 
     $authorizedKeysPath = "$env:USERPROFILE\.ssh"
 
+    logmsg "* Authorizing SSH_PUBLIC_KEY for standard user"
+
     New-Item -Force -ItemType Directory -Path $authorizedKeysPath
     Set-Content $authorized_keys_path $authorizedKeys;
+
+    if ($?) {
+        logsuccess
+    } else {
+        logfail
+    }
 }
 
 ################################################################################
@@ -1321,7 +1345,7 @@ do {
     configureNetwork $context
     renameComputer $context
     runScripts $context $contextPaths
-    authorizeSSHKeyAdmin $context['SSH_PUBLIC_KEY']
+    authorizeSSHKeyAdmin $context["SSH_PUBLIC_KEY"]
     reportReady $context $contextPaths.contextLetter
 
     # Save the 'applied' context.sh checksum for the next recontextualization
