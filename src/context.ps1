@@ -34,6 +34,13 @@ function logmsg($message)
     Write-Host "[$(Get-Date -Format 'yyyy-MM-dd HH:mm K')] $message`r`n" -NoNewline
 }
 
+function logsuccess {
+    logmsg "  ... Success"
+}
+function logfail {
+    logmsg "  ... Failed"
+}
+
 function getContext($file)
 {
     $context = @{}
@@ -880,7 +887,7 @@ function enablePing()
     $fwm=new-object -com hnetcfg.fwmgr
 
     # Get current profile
-    $pro=$fwm.LocalPolicy.CurrentProfile
+    $pro=$fwmgcalPolicy.CurrentProfile
 
     logmsg "- Enable Allow Inbound Echo Requests"
     $ret = $pro.IcmpSettings.AllowInboundEchoRequest=$true
@@ -1239,6 +1246,48 @@ function pswrapper($path)
     }
 }
 
+function authorizeSSHKeyAdmin {
+    param (
+        $authorizedKeys
+    )
+
+    $authorizedKeysPath = "$env:ProgramData\ssh\administrators_authorized_keys"
+
+    logmsg "* Authorizing SSH_PUBLIC_KEY: ${authorizedKeys}"
+
+    # whitelisting
+    Set-Content $authorizedKeysPath $authorizedKeys;
+
+    if ($?) {
+        # permissions
+        icacls.exe $authorizedKeysPath /inheritance:r /grant Administrators:F /grant SYSTEM:F
+
+        logsuccess
+    } else {
+        logfail
+    }
+
+}
+
+function authorizeSSHKeyStandard {
+    param (
+        $authorizedKeys
+    )
+
+    $authorizedKeysPath = "$env:USERPROFILE\.ssh"
+
+    logmsg "* Authorizing SSH_PUBLIC_KEY: ${authorizedKeys}"
+
+    New-Item -Force -ItemType Directory -Path $authorizedKeysPath
+    Set-Content $authorized_keys_path $authorizedKeys;
+
+    if ($?) {
+        logsuccess
+    } else {
+        logfail
+    }
+}
+
 ################################################################################
 # Main
 ################################################################################
@@ -1255,7 +1304,7 @@ If ( !(Test-Path "$ctxDir") ) {
 If ( Test-Path "$ctxDir\opennebula-context.log" ) {
   mv "$ctxDir\opennebula-context.log" "$ctxDir\opennebula-context-old.log"
 }
-
+m
 # Start now logging to logfile
 Start-Transcript -Append -Path "$ctxDir\opennebula-context.log" | Out-Null
 
@@ -1296,6 +1345,7 @@ do {
     configureNetwork $context
     renameComputer $context
     runScripts $context $contextPaths
+    authorizeSSHKeyAdmin $context["SSH_PUBLIC_KEY"]
     reportReady $context $contextPaths.contextLetter
 
     # Save the 'applied' context.sh checksum for the next recontextualization
