@@ -1255,7 +1255,7 @@ function authorizeSSHKeyAdmin {
 
     $authorizedKeysPath = "$env:ProgramData\ssh\administrators_authorized_keys"
 
-    logmsg "* Authorizing SSH_PUBLIC_KEY: ${authorizedKeys}"
+
 
     # whitelisting
     Set-Content $authorizedKeysPath $authorizedKeys;
@@ -1278,8 +1278,6 @@ function authorizeSSHKeyStandard {
 
     $authorizedKeysPath = "$env:USERPROFILE\.ssh"
 
-    logmsg "* Authorizing SSH_PUBLIC_KEY: ${authorizedKeys}"
-
     New-Item -Force -ItemType Directory -Path $authorizedKeysPath
     Set-Content $authorized_keys_path $authorizedKeys;
 
@@ -1295,6 +1293,8 @@ function authorizeSSHKey {
         $authorizedKeys,
         $winadmin
     )
+
+    logmsg "* Authorizing SSH_PUBLIC_KEY: ${authorizedKeys}"
 
     if ($winadmin -ieq "no") {
         authorizeSSHKeyStandard $authorizedKeys
