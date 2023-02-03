@@ -1296,7 +1296,7 @@ function authorizeSSHKey {
         $winadmin
     )
 
-    if (($winadmin -eq "NO") -or ($winadmin -eq "no")) {
+    if ($winadmin -ieq "no") {
         authorizeSSHKeyStandard $authorizedKeys
     }
     else {
