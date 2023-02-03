@@ -43,6 +43,8 @@ function logfail {
 
 function getContext($file)
 {
+
+    # TODO: Improve regexp for multiple SSH keys on SSH_PUBLIC_KEY
     $context = @{}
     switch -regex -file $file {
         "^([^=]+)='(.+?)'$" {
@@ -1288,6 +1290,21 @@ function authorizeSSHKeyStandard {
     }
 }
 
+function authorizeSSHKey {
+    param (
+        $authorizedKeys,
+        $winadmin
+    )
+
+    if (($winadmin -eq "NO") -or ($winadmin -eq "no")) {
+        authorizeSSHKeyStandard $authorizedKeys
+    }
+    else {
+        authorizeSSHKeyAdmin $authorizedKeys
+    }
+
+}
+
 ################################################################################
 # Main
 ################################################################################
@@ -1345,7 +1362,7 @@ do {
     configureNetwork $context
     renameComputer $context
     runScripts $context $contextPaths
-    authorizeSSHKeyAdmin $context["SSH_PUBLIC_KEY"]
+    authorizeSSHKey $context["SSH_PUBLIC_KEY"] $context["WINADMIN"]
     reportReady $context $contextPaths.contextLetter
 
     # Save the 'applied' context.sh checksum for the next recontextualization
